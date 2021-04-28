@@ -1,0 +1,604 @@
+\chapter{Package maintenance}
+
+\label{chap:maintenance}
+
+\section{Introduction}
+
+Rich application-specific package ecosystems are most often made of open source libraries which are contributed by volunteers.
+But these libraries must also be maintained to accommodate the evolution of the technology on which they are based.
+The programming language itself may be evolving at a slow or fast rate; the other libraries upon which a given library depends can receive compatibility breaking changes even if the language has not, and it may be important to stay compatible with the latest version for convenience or for security; the platforms to support (e.g. web browsers, or processor architectures) are likely to evolve, but depending on the abstractions upon which a library is built, it may matter or not; the state-of-the-art algorithms may have become better; etc.
+Overall no software can completely avoid the need to be maintained, and software libraries, even small ones, are no exception,\footnote{
+	At the current time, there is not much evidence for this claim.
+	Based on empirical studies, laws of software evolution have been devised~\cite{lehman1996laws}, which state among other things that software systems must be continuously adapted, or they end up being	less and less useful.
+	However, these laws were carefully restricted to so-called ``E-type software systems'', which are software that require evolution because the world, and the expectation of users, evolve.
+	These E-type systems are opposed to P-type systems, which are based on heuristics which can be refined further and further,	and S-type systems which are programs that are proven to behave	exactly as their specification mandates~\cite{lehman1980programs}.
+	Nonetheless, experience in the Coq ecosystem, and more generally in the formal method community, would tend to show that these S-type systems are no exception to the general rule that software must be maintained, and even proofs, when formalized on computer, have to be maintained, despite their mathematical immutability.
+}
+even though the amount of maintenance they require may be very small.
+
+Commercial library vendors will generally sell support, or new licenses for up-to-date versions, but in the case of open source libraries, in particular small convenience libraries, their author usually did not decide, when they created them, that they would maintain them forever.
+While creating and sharing a library may have not cost much to the author (or even benefited them in the form of personal satisfaction, external contributions, or new, innovative and useful libraries depending on theirs), the cost of maintenance can be much higher,\footnote{
+	Maintenance costs are frequently cited to be at least as high as development costs in the total lifecycle of software~\cite{lientz1981problems}.
+	However, these conclusions come from studying large systems in the software	industry and do not necessarily apply to the (possibly very small) open source libraries that are discussed here.
+}
+and does not always come with any incentive (as the author of the library may not even use it anymore).
+On the other hand, users that are currently using the library have much more incentive to contribute to maintaining it, but this is not always as easy for them as it is for the author.\footnote{
+	Difficulties can range from lack of knowledge of the source code, to not having access to the credentials required to upload new versions to the official distribution channels, to not being able to mobilize as well the other contributors.
+	A solution to the second and third problems can be for the author to trust one motivated contributor, and give them access to the required credentials, but misplaced trust can have dire consequences, as has been recently demonstrated by the event-stream incident~\cite{npm1,npm2}.
+}
+
+The question of who should be responsible for maintaining an open source library is therefore far from trivial.
+And the answer may actually depend a lot on the way the ecosystem is structured (cf. Chapter~\ref{chap:distribution}).
+
+In this chapter, I focus on the issue of packages that are maintained by a single person (usually their original author), while being depended on.
+I argue that these packages are more likely to become unmaintained, and pose a specific threat on the health of the ecosystem.
+In a first section, I estimate the prevalence of such packages, and I find that they are numerous.
+Then, I present mitigation models for users of these packages, in particular the possibility of creating a hard fork.
+Finally, I present a model of community organization, which emerged in several ecosystems, that can simplify the process of hard forking, and provide a new home for unmaintained packages.
+I have created such an organization for the Coq ecosystem over a year ago, and it has been already quite successful.
+
+\section{Estimating the prevalence of single-maintainer packages}
+
+\label{sec:single-maintainer-libraries}
+
+The advance of reuse facilities, such as package managers and registries (cf. Chapter~\ref{chap:distribution}), has led software projects to depend on more and more, smaller and smaller, utility libraries, instead of relying only on widely-known and trusted ones.
+
+But all software libraries must be maintained, and the main issue of small libraries is generally that they have fewer maintainers, most often a single maintainer, who might become less active or outright missing for a number of reasons.
+While the extreme case of trivial packages~\cite{abdalkareem2017developers} can be trivially solved by copy-pasting the code, and maintaining it within a larger source code base, I am interested in the frequent case of non-trivial libraries that are worth keeping as separate dependencies (to avoid duplicating innovation and maintenance work in the various projects depending on it) but are still small enough to have a single maintainer.
+
+I propose the following criterion to define the kind of libraries I am talking about: an open source library which requires by itself several hours of maintenance each year, which is depended upon directly by at least two actively maintained software projects by distinct developers or developer teams, and which is maintained by a single developer (i.e. a single developer has push-access, even if changes might be contributed by others through pull requests or e-mailed patches).
+I conjecture that such libraries are quite frequent in many package ecosystems.
+Given that it can happen that maintainers of such libraries stop responding to requests and updating their library for extended periods of time, this type of packages represents a very specific threat to the health of ecosystems.
+
+To validate this first conjecture, I use the dataset provided by Libraries.io~\cite{andrew_nesbitt_2017_808273} (cf. the corresponding Jupyter notebook~\cite{zimmermann2019librariesio}).
+This dataset includes a table of packages associated with repositories, containing more than 3,000,000 packages, including more than 1,000,000 Go packages, 925,000 npm packages, 250,000 PHP packages (Packagist), 200,000 Maven packages, 170,000 Python packages (PyPI), and 150,000 Ruby gems.
+I first restrict this dataset to the 2,500,000 packages whose repository is located on GitHub, because the dataset contains more complete data for these.
+
+A first filtering step of packages with more than one dependency, and a repository size of at least 10 KB (in an attempt to filter out trivial packages), makes this number go down to 257,000 packages, including 116,000 npm packages, 29,000 PHP packages, 22,000 Ruby gems, 19,000 Python packages, 18,000 Maven packages, and just 9,500 Go packages.
+In most ecosystems, this first filtering step has cut down the number of packages by a factor of ten, but in the case of Go, the factor is a hundred.
+This can be explained by the absence of package registry for Go, which forces Libraries.io to look for Go packages directly on GitHub instead, where it finds many projects that are not meant to be reused as libraries.
+
+This first filtering step is not sufficient because I want to find only packages that are used in actively maintained projects from different owners (individual developers or teams).
+Therefore, I use the repository dataset provided by Libraries.io, which contains about 34,000,000 repositories, and I extract those that were pushed to in the last six months before the Libraries.io dataset was published.
+The number of remaining repositories is about 800,000 (once again this involuntarily excludes repositories outside of GitHub, for which the dataset does not contain the last pushed date).
+
+Finally, I join the package and repository data by relying on the dependency dataset provided by Libraries.io, which includes about 390,000,000 dependencies.
+This finally restricts the set of packages that are depended upon by two actively maintained projects from distinct owners to about 65,000.
+
+Sometimes, multiple packages are maintained in the same repository (more than 1,500 packages in the DefinitelyTyped repository,\footnote{
+	DefinitelyTyped is a community repository gathering TypeScript type definitions for otherwise untyped Javascript packages:
+	\url{http://definitelytyped.org/}.
+	\label{footnote:definitelytyped}
+} although this is a very special case, the next biggest monolithic repository being the Babel repository with 286 packages).
+In this case, it is hard to estimate different maintenance indexes for the different packages, and giving the same maintenance index to thousands of packages would completely bias the statistics, so I decide to keep only one package per repository (the package that is most depended upon).
+
+Out of the remaining 50,000 packages, 18\% have just a single contributor (which is worse than having a single maintainer).
+Next, I estimate the packages with a single maintainer.
+
+For each package owner, I look on GitHub (using the GraphQL API which makes it possible to bundle queries about 40 owners in a single HTTP request) whether it is an organization, and how many public members it has.
+I found that about 33\% of these 50,000 popular packages belong to organizations with at least two public members.
+Belonging to an organization does not guarantee that the package will keep being maintained, but it should prevent against a maintainer disappearing without notice, and no one having access to the repository.\footnote{
+	To be fair, even if a package belongs to an organization with two or more public members, it could have a single administrator, and if credentials are needed to publish a new version of the package, then it is possible that the main maintainer did not share these credentials with anyone else.
+}
+
+For the rest of the package owners, I approximate the number of maintainers by querying for the number of assignable users.
+Assignable users are a super-set of collaborators with write-access:\footnote{
+	For privacy reasons, GitHub does not share the list of collaborators, or people with write-access on a repository, but it does share the list of assignable users nonetheless.
+}
+they correspond to organization members with read-access (when the owner is an organization\footnote{
+	This can also be used as a way of approximating organization membership, including non-public members.
+}), and collaborators that were manually added on the repository itself~\cite{github_assign}.
+
+Of the remaining packages that were not part of an organization with two public members, I estimated that only 33\% have two or more collaborators.
+This leaves a large proportion of packages at risk.
+
+\subsection{Threats to validity}
+
+The goal of this section was to estimate the proportion of packages that are sufficiently popular to be used in two maintained projects by different owners, and yet have a single maintainer.
+Two kinds of errors could have affected the results: errors in the computation of popular packages, and errors in the computation of single-maintainer packages.
+
+Popular packages could have been missed, and in fact it is certain that this was the case, since some popular packages are hosted outside of GitHub.
+Another possible error could have been with the maintenance criterion.
+Some projects should be considered maintained even if they were not pushed to during a six-month period (some feature-complete packages may need less frequent updates~\cite{valiev2018ecosystem}, especially in a slowly evolving ecosystem).
+Furthermore, some projects may have been pushed to after Libraries.io last refreshed the GitHub meta-data about them, and thus the dataset may have contained outdated information that could have resulted in marking these projects as unmaintained.
+Therefore, the number of maintained packages depending on a given package could have been underestimated, and the package excluded because of this.
+However, the resulting sample of popular packages is still rather large (50,000 packages).
+Bias in this sample could result mostly from the exclusion of non-GitHub projects, and of many packages hosted in monolithic repositories.
+
+I computed dependencies between packages irrespective of package version numbers, so this could also lead to considering former dependencies that were dropped or replaced.
+Fortunately, the Libraries.io dataset contains more specific information regarding which version depends on what, so I plan to use it to refine this analysis in the future.
+
+Then, the criterion that was used to approximate the number of maintainers is bound to have introduced some errors as well.
+However, I believe that it is more likely to have resulted in overestimating the number of maintainers of a package, rather than underestimating it.
+Indeed, it is not because someone can be assigned issues in a repository that they have access to all the required tools and credentials to be considered an actual maintainer of the package.
+Even if they are an actual maintainer, and are ready to take over from the previous maintainer for a while, if they do not have admin-access, they may not be able to nominate new maintainers, and this can harm the maintenance of the package after some time, in particular if they want to step down eventually.
+
+Overall, I believe that these threats do not put any doubt on the main conclusion of my analysis which is that many popular packages have a single maintainer.
+However, I have not yet tried to evaluate separately for each ecosystem if the proportion of popular packages at risk was similar.
+I plan to do this as future work, as this would increase external validity of the results, and would avoid having larger ecosystems bias the overall results.
+
+\subsection{Related work}
+
+\subsubsection{Project maintainers and developers}
+
+Yamashita \emph{et al.}~\cite{yamashita2015revisiting} analyzed the proportion of core developers in 2,496 GitHub projects.
+They used various criteria to define core developers, one of them using GitHub's collaborator API endpoint (through the GHTorrent dataset~\cite{gousios2012ghtorrent}).
+Unfortunately, access to this API has been restricted since then, and GHTorrent does not include this data anymore.\footnote{
+	Cf. the commit in GHTorrent removing the support for this API endpoint: \url{https://github.com/gousiosg/github-mirror/commit/79c81bf}.
+}
+This is why I used the assignable users information instead.
+
+My analysis is different from studies computing metrics such as \emph{bus factor} (also called \emph{truck factor})~\cite{ferreira2019algorithms,torchiano2011my}, and more generally estimating turnover risks~\cite{rigby2016quantifying,nassif2017revisiting} within a software project, because I am focusing on the problem of who is able to integrate changes and publish new versions of a package.
+It can happen that popular packages receiving pull requests from many contributors still have a single maintainer that suddenly disappears.
+On the other hand, a project that is not subject to such risks because it belongs to an active organization, or has several maintainers, can still be subject to knowledge loss risks.
+Therefore, the two types of studies are complementary, and highlight different, but related, health risks that can affect a package ecosystem.
+
+Avelino \emph{et al.}~\cite{avelino2019abandonment} have found a significant proportion of projects having faced the event of a ``truck-factor'' developer stepping down, despite having only analyzed the 500 most starred repositories in the six most popular languages on GitHub.
+Less than half of the projects survived, generally because a new, or preexisting contributor took over.
+They interviewed these contributors that helped projects survive, and identified the difficulty of getting access to the repository as a significant barrier (when project maintainers had become unresponsive).
+
+\subsubsection{Unmaintained projects}
+
+Several studies have highlighted the fact that many open source projects are dormant or abandoned~\cite{khondhu2013all,kalliamvakou2016depth}.
+However, this result would not surprise any GitHub user: many projects are personal projects or just never take off.
+A project threatening to become dormant does not pose the same risk to open source ecosystems depending on whether it has a lot of users, very few, or none beyond its author.
+
+Valiev \emph{et al.}~\cite{valiev2018ecosystem} have found clear evidence that packages that have been able to gather a large community of users over time, characterized by a high number of reverse dependencies, are much less likely to become dormant.
+This expected result does not contradict the observation that there are a number of such packages that have a single maintainer and risk becoming dormant, despite having a community of users ready to help (even though this community does indeed reduce the risk).
+
+\subsubsection{Ecosystem health}
+
+Measuring ecosystem health is an important question that researchers have studied in the past~\cite{jansen2014measuring}.
+It is still a highly active research domain, as witnessed by the currently running SECOHealth project~\cite{mens2017towards}.
+My work relates to this literature by highlighting a health risk factor (single-maintainer projects) that could be integrated in ecosystem health assessment frameworks.
+
+\section{Mitigation models}
+
+When a package becomes unmaintained (the maintainer does not respond
+anymore to issues and pull requests, and does not push new commits or
+versions), what are the options facing the projects using it?
+
+\subsection{Removing or replacing the dependency}
+
+Upon the realization that a project depends on an unhealthy
+dependency, it can be time to reevaluate the usefulness of such
+dependency.  Sometimes, the functionality brought by the dependency is
+not that useful, or an alternative, healthier package could be used
+instead.  Removing or replacing the dependency can, in such case, turn
+out to be beneficial, although the migration can bear significant
+costs to the project, not necessarily at the best of time.
+
+Furthermore, this is a solution that each project has to evaluate on their own, and while it might be feasible for some projects to drop the dependency, it might be significantly harder for others.
+Having many projects migrate away from an unhealthy library can further reduce its chances of surviving, thus threaten other projects for which migrating is too costly (for instance, because they are barely maintained themselves).
+
+Previous work has explored mining data from projects having performed library migrations to automatically suggest candidate libraries to migrate to~\cite{teyton2012mining}, and to automatically identify mapping between methods of the two libraries (in the context of Java projects)~\cite{teyton2013automatic,alrubaye2019migration}.
+
+\subsection{Vendoring}
+
+Vendoring a dependency is the process of copying its sources within the project's sources, and building the whole thing, instead of installing the dependency with a package manager first, and building the project by relying on the installed dependency.
+
+Depending on the language or build system support, vendoring dependencies
+might be trivial or not, but should always be feasible (at the price
+of renaming modules if proper scoping cannot be achieved otherwise, and adapting the build configuration).
+Go is well-known for having good vendoring support~\cite{hightower2016s}.
+This is also the case of OCaml when both the vendoring and the vendored projects use the Dune build system~\cite{dimino2016dune}.
+Work is in progress (by Emilio Gallego Arias) to add Coq support to the Dune build system, including the compositional build feature, that makes it possible to vendor dependencies.\footnote{
+	Cf. \url{https://github.com/ocaml/dune/pull/2053}.
+}
+
+Vendoring allows a project maintainer to integrate patches before they are integrated upstream.
+Some of these patches might have been found in unmerged pull requests from external contributors.
+However, this solution cannot be a long-term solution because it is more work for everyone to have to integrate patches manually, and at some point new pull requests cannot continue to be based on an unchanged base branch.
+
+\subsection{Forking}
+
+\subsubsection{Definition}
+
+Forking has a broad meaning today in the open source world.
+
+Early academic works which studied forking considered only what is usually denoted today as \emph{hard forks}.
+For instance, in their 2012 paper~\cite{robles2012comprehensive}, Robles and Gonz\'alez-Barahona give a definition of a fork that includes requirements such as having a new project name, and a disjoint community.
+The Hacker's Dictionary~\cite{raymond1996new} even specifies that the two code bases must be developed in parallel, and have irreconcilable differences between them.
+
+Some papers were dedicated to studying a single fork event, such as the LibreOffice fork from the original OpenOffice project after the Oracle acquisition of Sun Microsystems~\cite{gamalielsson2014sustainability}.
+The ``right to fork'' has been discussed in works such as~\cite[page~64]{weber2004success} as an essential freedom of free software.
+Nyman and Lindman~\cite{nyman2013code} claim that forking is the most important tool to guarantee sustainability in open source development, and that the right to fork has a major effect on governance, even in the absence of any forks.
+
+With the rise of GitHub, forking has taken a new meaning.
+\emph{Development forks}~\cite[Chapter~8]{fogel2005producing} are copies of the sources where a contributor makes changes to the code in order to submit them for review through the pull request mechanism.
+
+But even before GitHub, forking was much more common and much less definitive that hackers and researchers alike seemed to believe.
+Nyman and Mikkonen~\cite{nyman2011fork} observed the presence of many forks on SourceForge, including forks claimed to be temporary and hoping to get their changes integrated upstream (that can therefore be classified as development forks).
+They also noticed the phenomenon of forking a project because it seemed to be abandoned, and not because of some disagreement.
+While this should still be denoted as a hard fork, there is only one project under development after the fork, contrary to the definition of the Hacker's Dictionary~\cite{raymond1996new}.
+This is the kind of forks that we are interested in, in this section.
+We denote this sub-type of hard forks as \emph{friendly forks}.
+
+It should be noted that while Nyman and Mikkonen observed a number of forks of unmaintained projects, SourceForge had, at the same time, a takeover procedure to allow a user to take control of an abandoned project.\footnote{
+	The procedure, mentioned by Khondhu \emph{et al.}~\cite{khondhu2013all}, was known as ``Abandoned Project Takeover''.
+	It was advertised as an existing policy by Ross Turk, a SourceForge community manager, in an e-mail thread from 2007 (\url{http://lists.tlug.jp/ML/0710/msg00030.html}):
+	``SourceForge.net does have a system for taking over a project.
+	We call	it our Abandoned Project Takeover system, and to activate it you just need to attempt to register a new project with the same name as the old one.
+	The old admins will be emailed, and if they don't respond within a certain period of time, the project will be transferred to the new requester.''
+	It was also explicitly presented on the SourceForge website in 2010 (\url{https://web.archive.org/web/20100609115535/http://sourceforge.net/apps/trac/sourceforge/wiki/Abandoned\%20Project\%20Takeovers}):
+	``We give the existing project administrators 90 (ninety) days to respond to these requests. If after 90 days there is no reply to our take over request notification, we will assign the project to the requester.''
+	This page was changed in 2011 (\url{https://web.archive.org/web/20110326034942/http://sourceforge.net/apps/trac/sourceforge/wiki/Abandoned\%20Project\%20Takeovers}):
+	``If the project administrators do not respond, or you do not wish to contact them, you may register a new project under a new name on SourceForge.net and manually fork (duplicate) the source code and file releases as you see fit to continue its development.''
+	But despite this update that seemed to indicate that it was not possible anymore to take over an abandoned project without the previous maintainers' permission, such requests were still processed several years after:
+	\url{https://sourceforge.net/p/forge/site-support/1636/} (2012), \url{https://sourceforge.net/p/forge/site-support/2384/} (2013, mentions that SourceForge's legal team is working at updating the process, but grants the request anyway), \url{https://sourceforge.net/p/forge/site-support/6629/} (2014).
+	\label{footnote:apt}
+}
+This may have reduced the need to create friendly forks, despite the fact that takeovers often happened without the consent of the project's previous maintainers (in case they were unresponsive).
+
+\subsubsection{Socio-technical issues when forking a package}
+
+\paragraph{When to advertise a friendly fork?}
+
+While it is easy for anyone to maintain a personal fork of a project, which contains the original code with some modifications on top, it may be difficult to decide when to advertise this project as a friendly fork intending to take over the place of the original, unmaintained project.
+
+On the one hand, maintaining a fork of an unmaintained project for a long time without doing any advertisement is likely to result in duplicated work, as other persons interested in the project, but who are not aware of the fork, run in the same issues, and prepare their own fixes.
+Zhou \emph{et al.}~\cite{zhou2019fork} studied inefficiencies that may arise mainly because of a lack of awareness of the work that was done in forks.
+
+On the other hand, doing some efforts to advertise the fork (while being clear about the friendly nature of the fork, and the reason for forking) can pay back by bringing an influx of new contributions, from developers that were interested in the project, but were discouraged by the absence of feedback from the maintainer.
+But it requires effort (going to forums where people usually talk about the project to tell them about the fork), and commitment.
+The model of community forks that is discussed in the Section~\ref{sec:community} can help reduce the level of commitment required.
+
+The time to wait until the project is considered unmaintained can also vary depending on community expectations, and is rarely clear to anyone.
+While SourceForge's ``Abandoned Project Takeover'' page set a 90-day delay to get an answer (and often effectively processed takeover requests much faster, cf. Footnote~\ref{footnote:apt}), CPAN's FAQ~\cite{cpan_faq} informally sets a delay of one year without response before considering transferring maintenance of a module.%, which might be viewed as a very long delay in fast-moving ecosystems.
+
+\paragraph{How to fork on GitHub?}
+
+On GitHub, forking a project is as easy as clicking on a button.
+But, when preparing a hard fork, rather than a development fork, the new maintainer may wonder whether this is the right choice.
+
+By default, forks on GitHub are not meant to take over a project: issues are disabled (but they can easily be switched on), and a prominent link to the original project is displayed under the project's name.
+Furthermore, code is not searchable in a fork unless the fork has more stars than the original~\cite{github_search_forks} (which can take time to get, given that people rarely remove stars they have given in the past, even when a project is unmaintained).
+
+GitHub does not make discovering maintained forks very easy: the only way to learn about them is to display the fork tree, which is often very large, and to identify the forks that receive pull requests by the fact that they have many forks themselves.
+When the forks are too numerous, GitHub will not display the full list of forks, and the most important ones may be missing.
+
+For instance, Dagger 2 is maintained at \url{https://github.com/google/dagger}, a GitHub fork of \url{https://github.com/square/dagger} where the first version was developed.
+The new repository is 2,004 commits ahead, and has about twice as many stars (14,199 versus 7,109).
+But when displaying the tree of forks, GitHub displays a warning that it is not displaying the full list, and indeed Google's fork is missing.
+If Dagger 1's own README did not advertise the location of the Dagger 2 sources, someone who was given the link of the original repository will not necessarily learn about the existence of the fork for a while.
+
+The ``Lovely forks'' browser extension~\cite{upadhyay_forks} helps developers discover notable forks by querying for them, and showing them below the project's name, where GitHub would display the original project of a fork.
+
+An alternative solution is to create a new repository manually, and to push the content of the original repository in it.
+It is also possible to contact GitHub staff to remove the fork status from an existing repository.
+They can also change the base directory in a fork network, but this requires consent from the original owner.\footnote{
+	I was told in a private mail by a member of GitHub staff that ``we can change the parent of a fork network on our end, but it does require approval from the original owner''.
+}
+
+\paragraph{Migrating issues and pull requests.}
+
+GitHub does not provide any support for easily duplicating the issues from the previous bug tracker.
+Doing so is nonetheless possible using a tool similar to the one used in Section~\ref{sec:migration}.
+Reusing the exact same numbers for existing issues can be done by opening them in the right order, and inserting dummy issues (that can be deleted afterwards) to fill the holes created by pull requests.
+The advantage of doing this is that the code and the commit message frequently reference issues by their number, and importing preexisting issues ensures that these numbers continue to point to the correct issue.
+On the other hand, new maintainers might appreciate the ability to manually duplicate only the most important issues that they intend to solve.
+
+If the fork was created using GitHub's fork button, it is also possible to manually recreate pull requests for every pull request that is still opened on the original repository.
+
+\paragraph{How to publish updates to the package?}
+
+Different registries and different ecosystems have different views regarding the transfer of a package to a new maintainer.
+Most support voluntary transfers, and some also support transfer to a new maintainer when the previous maintainer is completely unresponsive.
+
+In some package registries, all packages are scoped (cf. ``Package naming'' in Section~\ref{sec:options-registries}), so unless an author explicitly gives access to a new maintainer, there is no way to continue using the package full name, and everyone will have to update their dependencies.
+On the other hand, this means that the original package will not have a special status compared to the fork in the package index.
+
+In some registries that support both non-scoped and scoped package names, keeping the same base name while adding a scope can be a way of marking the affiliation of the package to the original one.\footnote{
+	As recommended in this Open Source Stack Exchange answer about npm: \url{https://opensource.stackexchange.com/a/7025/5858}
+}
+This is also the technique that is used by the DefinitelyTyped repository (cf. Footnote~\ref{footnote:definitelytyped}) to publish type definitions corresponding to untyped Javascript packages.
+
+In registries which are based on a shared repository of manifest files, it is technically easy to change the source of a package when publishing an update.
+The question of whether it gets accepted will depend on the registry's policy.
+MELPA's policy~\cite{melpa_contributing} for instance says that forks will not be accepted except in ``extreme circumstances''.
+
+Early archives where sources (and sometimes even bug trackers) are located on the platform make it technically even easier to change the maintainer of a package: CTAN, CPAN, CRAN, and PEAR all have documentation regarding unmaintained / orphaned packages.
+CTAN specifies that modifications to a package should come from the package author or maintainer, new maintainers can be accredited by the current maintainer, but leaves the door open to discussing a solution when a package is unmaintained and the author is unresponsive~\cite{ctan_orphaned}.
+CPAN administrators can transfer maintenance of a package to a new volunteer after sufficiently many steps have been taken to reach the previous maintainer and advertise the intent to take over the package~\cite{cpan_faq}.
+CRAN has a formal orphaning process, after which new volunteers can request to become the new maintainers~\cite{cran_policy}.
+Before a package is orphaned, transfer requires written agreement of the previous maintainer.
+PEAR packages can be marked as unmaintained, and may then be transferred to a new lead maintainer~\cite{pear_orphaned}.
+
+In general, there is a trust issue associated to allowing a change of maintainer for a package (as this means that someone can update their copy to a new version without realizing the transfer of ownership), but this seems to be part of a much more general trust question in code reuse and package ecosystems.
+Because of this trust issue, npm is even considering restricting how voluntary transfers can be made~\cite{npm-transfer}.
+
+We can see that forking, while often the best solution for the user community, puts a very large cost on the new maintainer, when they do things right and try to organize the community around the new fork.
+And when forks are created but not properly advertised, it can only lead to duplication of effort.
+In the next section, I present a solution that alleviates the cost of forking.
+
+\section{Community forks and community organizations}
+
+\label{sec:community}
+
+\subsection{Community forks for increased sustainability}
+
+While hard forks are a possible solution to the problem of unmaintained packages, we have seen that this solution puts a significant cost on the new maintainer.
+It can also put a significant cost on the user community when the package registry does not make it easy to switch the maintainer of a package, because a possibly large number of users will need to learn about the hard fork, evaluate if it is likely to be viable, and update their dependencies.
+
+The transition period, which starts when people become aware that the previous maintainer has disappeared, and which only ends when the user community has massively adopted a hard fork as the new canonical source for the package, is a time during which it is likely that efforts are duplicated, potential contributions as pull requests or bug reports are wasted because they are being ignored or users stop submitting them, the package user base stops growing, or even shrinks, as people look for alternatives to migrate to, or even start their own from scratch, etc.
+
+This cost can be deemed too high, especially if the hard fork itself also has a single maintainer, and thus is likely to suffer from the same issues a few years later.
+It is natural that the community of users can anticipate this, and will be reluctant to move massively to a hard fork that does not take steps to prevent this scenario to repeat.
+
+A preventive measure would typically be the creation of a community fork.
+When a package raises sufficient interest, and enough people are motivated to keep maintaining it together, they can host the new sources in a dedicated GitHub organization instead of a personal account, and ensure that at any time, there will be several administrators of this organization, and several persons with credentials to publish a new version of the package.
+
+However, most popular single-maintainer packages are likely to be too small for such a community fork to happen.
+To facilitate the creation of community forks, a possible model is to host them in a community organization dedicated to the long-term maintenance of important packages.
+This is the model that I present now.
+
+\subsection{Community organizations for the long-term maintenance of packages}
+
+\label{sec:community-org-model}
+
+In this model, a single informal organization is created (typically as an organizational account on GitHub, possibly with some chat rooms / forums / mailing lists, but \emph{a priori} without any legal standing) to host community forks, in a specific ecosystem (typically around a library, a framework, or some specific objective).
+A place is dedicated to discussing organizational aspects of the community, and to proposing new packages for inclusion (for instance the issue tracker of a meta-repository).
+The criteria for accepting a package may vary, but generally include having at least one person who is volunteer to maintain the package.
+
+The maintenance may actually be a community effort, but the advantage of having a designated maintainer for a package is to avoid diluting responsibility.
+However, volunteering to be the principal maintainer of a package is not a long-term commitment.
+The advantage of hosting the package within a community organization is that the maintenance responsibility can easily be transferred if a maintainer wants to step down or becomes unresponsive, as long as there are responsive organization administrators, and a new volunteer maintainer.
+
+Besides, having a community organization can make collaboration easier, and encourage maintainers to share best practices and help one another.
+If all the maintainers are given commit access to all projects, a maintainer can easily help maintain another package while its own maintainer is temporarily unavailable.
+
+Hard forking an unmaintained project within such a community organization is likely to be a factor that will help the community accept the hard fork faster, as it creates \emph{de facto} a new central point, and it guarantees against the risks associated with a new single-maintainer package.
+
+Finally, the existence of such a community organization provides an exit strategy for authors of popular packages that would like to step down from maintaining them.
+They can submit their package for inclusion, and transfer them in the community organization if accepted.
+Again, inclusion criteria may vary depending on the specific community organization.
+
+\subsection{The case of elm-community}
+
+One of the early instances of this model\footnote{
+	Earlier instances include Sous Chefs \url{https://sous-chefs.org/}, founded in May, 2015, and Vox Pupuli \url{https://voxpupuli.org}, founded in September 2014.
+} is the elm-community organization \url{https://github.com/elm-community/Manifesto}, which was founded in November 2015.
+I interviewed Ryan Rempel, the founder of elm-community, on July 5\textsuperscript{th}, 2019.
+
+The Elm package ecosystem had already got a culture of package forking and updating when a new version of the Elm language was published but the original package author did not react.
+This was made easier by the fact that all package names are scoped in the Elm package registry.
+Consequently, the original package does not have a special status compared to its forks.
+
+However, some non-pure Elm packages (that contained what people used to call native code, and now call kernel code~\cite{czaplicki2018native}, i.e. JavaScript) had to go through a formal ``blessing'' (whitelisting) process to be published in the Elm package registry.
+For such packages, forking and updating could not be done so casually, because it would additionally require going through this formal approval process.
+This specific issue was discussed on the Elm users' mailing list\footnote{
+	See: \url{https://groups.google.com/forum/\#!topic/elm-discuss/-GQJkWGdMvg/discussion}.
+} after the author of a widely used package, containing native code, had been unresponsive for two months.
+During that time, a pull request with a trivial patch required to upgrade the package to the new version of the language (Elm 0.16) had been left unanswered.
+
+Max Goldstein, an active community member, who is now part of Elm's core team, suggested the creation of an ``elm-community'' GitHub organization ``to steward the most important non-official packages''.
+Ryan Rempel, another active community member, who was the author of the unmerged pull request, jumped on the idea, created the organization, forked the package, and submitted a whitelisting request for it, on the same day.
+Two days later, he created a meta-repository named ``Manifesto'' in which he described the purpose of the organization in a README, and whose issue tracker served to host organizational discussions, and package adoption requests.
+
+Ryan told me that the reason he had reacted so quickly after the idea was first proposed was because he had viewed this as an opportunity to foster a new form of collaboration, that would be less disciplined, and less centrally controlled than what was common in the Elm community.
+Indeed, he told me, the Elm community is unusually disciplined for an open source community, around a core team that has very specific ideas about what kind of participation is welcome.
+All his previous attempts to advocate a more open community had failed, and left him tired.
+So in this case, he started the community organization without really leaving any time to anyone to discuss the idea, invited five or six people from the beginning, and it turned out to be successful pretty quickly.
+
+Not so long after, the organization gained some repositories that made more sense to develop collaboratively, such as a series of standard library extensions.\footnote{
+	See: \url{https://groups.google.com/forum/\#!topic/elm-discuss/wJPvZUql6v0/discussion}
+}
+
+The creation of a Manifesto repository was initially meant as a way of explaining the philosophy of the project, but also to allow issues to be used for organizational questions.
+The word ``Manifesto'' was slightly provocative and political, but the text of the README avoided any provocative content.
+According to Ryan, the text was rather abstract at the beginning, and others helped make it more concrete over time.
+The governance, in particular, remained voluntarily informal.
+
+The idea to have a principal maintainer for each repository, to avoid dilution of responsibility (which leads to issues and pull requests being left unanswered), was introduced about six months later by a member of the organization.\footnote{
+	See the issue \url{https://github.com/elm-community/Manifesto/issues/16} and the pull request \url{https://github.com/elm-community/Manifesto/pull/17}.
+}
+This change made explicit the rule that issues and pull requests are normally handled by the repository's principal maintainer, but in case of unresponsiveness, any other member can step in, and in case of long-term unresponsiveness, the maintainer is changed.
+
+\subsection{An emerging model}
+
+\label{sec:community-emerging}
+
+Elm-community is not the only instance of this model, and there are even other instances that predate it.
+
+The Vox Pupuli organization was founded in September 2014 to maintain Puppet modules (initially under the name of puppet-community), and is currently home to over 176 repositories and 139 collaborators.
+They have a precise migration documentation~\cite{voxpupuli2016migrating}, in which they clearly state that they prefer repository transfer, but can proceed to hard forks when a package author is completely unresponsive.
+They have also made efforts in recent years to promote their model so that other communities can inspire from it, and create their own~\cite{galic2017voxpupuli,hollinger2017voxpupuli}.
+
+The Sous Chefs organization was founded in May 2015\footnote{
+	See the Chef mailing list announcement: \url{http://lists.opscode.com/sympa/arc/chef/2015-05/msg00091.html}.
+} to maintain Chefs ``cookbooks'' (initially under the name of the Chef Brigade), and had a meta-repository from the start.\footnote{
+	The first issue (\url{https://github.com/sous-chefs/meta/issues/1}) and the first commit (\url{https://github.com/sous-chefs/meta/commit/efb426f}) were created three days after the initial mailing list announcement.
+}
+They also have a clearly documented forking and transfer policy~\cite{souschefs_fork,souschefs_transfer}.
+In particular, their forking policy states that hard forks are republished to the package registry under the original name with a ``sc-'' prefix.
+
+Both organizations are pretty open to any repository transfer from members of the organization.
+
+Dlang-community (\url{https://github.com/dlang-community/discussions}, founded in December 2016) has stricter inclusion criteria than Vox Pupuli or Sous Chefs: packages are not transferred or created in the organization without it being discussed with other members, and the package being important to the community.
+
+The following organizations have been directly, or indirectly influenced by Elm-community:
+\begin{itemize}
+	\item ReasonML-community (\url{https://github.com/reasonml-community/meta}) was founded in January 2017 under the name Buckletypes (following the model of the TypeScript DefinitelyTyped organization, cf. Footnote~\ref{footnote:definitelytyped}).
+	It was renamed in July 2017, and got a meta-repository influenced by Elm-community in January 2018.\footnote{
+		See \url{https://github.com/glennsl/reasonml-community-meta-proposal} and \url{https://github.com/reasonml-community/meta/issues/1}.
+	}
+	However it has failed to get clear adoption guidelines, and has recently failed to adopt the very popular graphql\_ppx package, after more than six months of unresponsiveness from its author, and many such suggestions in the ReasonML Discord chat.
+	\item Coq-community (\url{https://github.com/coq-community/manifesto}, launched in July 2018 although I created the organization in December 2017) was directly influenced by Elm-community.
+	I present it in Section~\ref{sec:coq-community}.
+	\item OCaml-community (\url{https://github.com/ocaml-community/meta}, founded in August 2018) was influenced by Coq-community and Elm-community.
+	Similarly to Dlang-community, it only accepts popular OCaml packages.
+	\item React-native-community (\url{https://github.com/react-native-community/.github}) was founded in July 2016, but got a ``renaissance'' period starting in December 2018 that was influenced by OCaml-community.\footnote{
+		See: \url{https://github.com/react-native-community/discussions-and-proposals/issues/63}.
+	}
+\end{itemize}
+
+Some organizations are similarly structured, and intend to facilitate the maintenance of projects after their maintainer has left or lost interest, but do not explicitly support forking already unmaintained projects.
+Examples include the F\# Community Incubation space (\url{https://github.com/fsprojects/FsProjectsAdmin}, founded in November 2013), Electron Userland (\url{https://github.com/electron-userland/welcome}, founded in February 2016), the Elytra group (\url{https://github.com/elytra}, founded in May 2016), which does not have a meta-repository or general guidelines, but does list the maintainers of each repository in their description, and advertise when a module is looking for a new maintainer.
+The Fluent Plugins Nursery (\url{https://github.com/fluent-plugins-nursery/contact}, founded in September 2016) is explicitly intended for plugins that are not maintained by their original author, but also states ``we don't want to fork original authors'~''.
+
+In the following, I present the process I used to find about the organizations that I listed in this section (cf. the corresponding Jupyter notebook~\cite{zimmermann2019community}).
+
+First, I listed 75 keywords that could be expected to appear in the name or the description of such organizations.
+This included keywords expressing collaborative work such as ``collaboration'', ``collective'', ``community'', ``contribution'', ``give'', ``help'', ``maintain'', ``participate'', ``support'', but also keywords expressing what is being worked on such as ``app'', ``component'', ``ecosystem'', ``extension'', ``library'', ``module'', ``package'', ``plugin'', ``repository''.
+
+I used GitHub's search, via the GraphQL API (cf. Section~\ref{sec:fetch_data}), to query for organizations which matched one of these keywords, and which had at least 5 repositories.
+GitHub's search only gives access to 1000 results, so when the number of results was above this limit, I further split the search using language filters (I searched for organizations containing repositories written in a number of popular languages such as Javascript, Java, Python, etc., and then all the organizations that did not contain repositories written in these languages).
+
+For each organization, I queried for the login, name, description, website URL, creation date, number of public members, and, for its most starred repository, the number of stars, and the number of assignable users.
+
+This first step yielded over 30,000 organizations (this is close to 15\% of all GitHub organizations with at least 5 repositories).
+Thanks to the use of the GraphQL API, the number of queries was rather limited, since I could fetch the information for as many as 50 organizations in a single request.
+
+The second step consisted in applying some filters on the results.
+Since I was only interested in community organizations, I filtered out the ones that had less than 10 public members, or 10 assignable users on the most starred repository (as a way to estimate the number of collaborators for organization with mostly private members).
+Since I was interested in organizations maintaining important packages, I also filtered out the ones whose most popular repository had less than 10 stars.
+
+The third step was intended to further reduce the list to organizations that have received repository transfers.
+Unfortunately, GitHub does not give access to this information.
+I used a trick to find these organizations nonetheless, which consisted in comparing the creation date of the organization to the creation date of its repositories.
+If an organization contains repositories that predate the creation of the organization, they have necessarily been transferred.
+Obviously, the converse is not true, so it could have resulted in underestimating the number of transferred repositories.
+
+For each organization, I searched for all its repositories that were created before the organization's creation date, and recorded the number of results.
+
+Finally, I manually browsed the list of 938 organizations with at least two transferred repositories predating its creation.
+I used the name and the description of the organization to infer its purpose.
+I also eliminated many organizations whose description was something like ``community packages for X'' when the URL of the organization was actually the website of X.
+Indeed, this type of organization is too frequent, and the reuse of the main product's website is a good indicator of the absence of a website, or meta-repository, specific to the community organization.
+
+When an organization seemed to correspond to the type I was searching, I opened its website, or GitHub page, and looked for more information about it.
+It was frequent to find organizations with many repositories but no public description of its principles, and whether the organization accepted new members or new projects.
+
+I am well aware that applying this series of filters is very likely to have resulted in missing out organizations that still fit the model I presented in Section~\ref{sec:community-org-model}.
+Nevertheless, the number of examples that I found, and the absence of relationship between many of them (in particular, between Elm-community and the two organizations that were founded before) leads me to think that this model of organization is naturally emerging in open source package ecosystems, in answer to the recurring problem of single-maintainer libraries that I presented in Section~\ref{sec:single-maintainer-libraries}.
+The fact that such organizations frequently got inspiration from one another shows that, while the need for such an organization is natural, the exact way of structuring it is not.
+Therefore, this contribution is important because, by surveying existing instances of this model, this can bring useful information to practitioners wondering about the opportunity of founding such organizations, and how to structure them.
+
+\subsection{How does it compare to earlier models?}
+
+The idea of sharing a common infrastructure to develop several projects together is not new.
+
+For instance, PEAR~\cite{pear} was PHP's first package manager and registry, but it was also much more.
+PHP packages had to go through a formal submission process to get accepted.
+Once they were accepted, they got an SVN repository, and a bug tracker.
+Finally, when a package was left unmaintained by its author, a new maintainer could be appointed~\cite{pear_orphaned}.
+
+However, there was an important difference in the motivations of authors applying to get their packages accepted in PEAR, compared to authors, or interested users, proposing a package to a community organization today.
+As PEAR was PHP's only package manager and registry at the time (until support for alternative registries was introduced, starting in 2005\footnote{
+	Cf. \url{http://php-pear.1086190.n5.nabble.com/Questions-about-PEAR-amp-Composer-td36854.html}.
+}), authors submitted their packages to get it distributed, rather than for the shared maintenance model.
+For some maintainers, the model and infrastructure were convenient, but others preferred to host their projects elsewhere.
+
+Today, the PEAR model is partially reproduced whenever a GitHub organization is created mostly to serve as a package index, and when package authors only transfer their packages to get more visibility.
+
+Another well-known example is the Apache Foundation, which hosts many open source projects, and provides shared processes and infrastructure.
+The main difference with the model of community organization that I presented is that the Apache Foundation only accepts larger projects (for instance, all the projects have several maintainers, and their own mailing lists~\cite{apache_how_it_works}).
+The Apache Foundation model is therefore not suited to solve the issue of single-maintainer packages, and is not ready to fork unmaintained packages (despite the original Apache web server being a community fork of an unmaintained project).
+
+\subsection{Open issues, future work}
+
+\label{sec:open-issues-community-org}
+
+I have presented a model of community organization for the collaborative, long-term maintenance of packages belonging to a given ecosystem, and I have identified numerous instances of this model.
+However, the method I used to find them cannot be considered to provide an exhaustive list.
+
+The use of GitHub Search to list possible candidates is good for exploratory work, but cannot be used beyond that: I have observed that the results obtained are very unstable when trying to fetch them again, and I have also found a number of bugs in GitHub's search filters.
+According to GitHub staff, this is because the search index is sometimes out of date.
+
+Finding more examples will require coming up with more precise criteria to detect automatically this kind of organizations, probably starting from the complete list of 2,000,000 GitHub organizations.
+Then, we could try to identify which characteristics of an ecosystem's structure favor the emergence of such organizations.
+
+Given that this is an emerging model, each instance is unique, and it would be useful to come up with a number of parameters that can be used to describe them.
+Interviewing founders and participants would be helpful in that regard.
+Then, the next step would be to identify which of these parameters are associated with successful community organizations.
+For instance, it would seem that documenting the adoption process is helpful to ensure that people know what to do when a useful package in the ecosystem has been abandoned and would be a candidate for adoption, whereas the absence of such guidelines can lead to a lack of reactivity, and duplication of effort with multiple people starting forks (as happened with the graphql\_ppx library in the ReasonML ecosystem).
+
+Finally, it seems important to systematically assess the impact of such community organizations on an ecosystem, and in particular on the packages that get transferred or forked in the organization.
+For instance, Zhou \emph{et al.}~\cite{zhou2019fork} studied inefficiencies in fork-based development, such as duplication of work or community fragmentation.
+We could try to evaluate whether the presence of a community organization can help reduce these inefficiencies, and under which conditions.
+This would provide concrete incentives to practitioners to create more instances of this model.
+
+\section{Package maintenance in the Coq ecosystem}
+
+\subsection{Historical context}
+
+As I explained in Section~\ref{sec:coq-package-distribution-history}, the distribution channel for Coq packages used to be based on a submission process to join a set of ``contribs''.
+With the introduction of an opam-based package registry, this submission process was shut down.
+Another use of the contribs had been for compatibility testing, and this was also replaced by a new model, presented in Section~\ref{sec:compatibility-testing}.
+However, there remained a use of the contribs that had not been replaced, which was that once a Coq package was in the contribs, it was kept compatible with new versions of Coq by the Coq development team.
+
+This was actually very useful because many Coq packages would not have been continuously maintained otherwise.
+Indeed, many Coq packages are developed by PhD students who are likely to move on to other things after they graduate.
+
+Furthermore, many Coq packages are paper artifacts that showcase a new technique, or formalize a mathematical theorem, and are not really meant to be reusable components, but this does not make them less interesting, or less worth maintaining.
+Being able to execute step-by-step a Coq proof plays a large role in being able to understand it, and researchers that want to understand in depth a paper several years after it was published may have difficulties doing so, if the artifact was not maintained for compatibility with new versions of Coq during this time.
+
+Besides, even though the submission process had been shut down, there still were more than 150 contribs predating the introduction of the opam-based registry.
+These contribs had been moved out of the historic SVN repository in which they were maintained, into a number of git repositories in 2015,\footnote{
+	Cf. \url{https://github.com/coq-contribs/coq-contribs/commit/f5814d5}.
+} so that they could be published in the Coq package registry more easily~\cite{claret2015opam}.
+These git repositories were moved to a special GitHub organization in 2016.\footnote{
+	Cf. \url{https://github.com/coq-contribs/coq-contribs/commit/976667c}.
+}
+However, since the contribs had stopped being used for compatibility testing, most Coq developers had lost interest in maintaining them.
+
+\subsection{The creation of coq-community}
+
+\label{sec:coq-community}
+
+I proposed to create an organization dedicated to the long-term maintenance of Coq packages, and based on the Elm-community model to solve these issues.
+In particular, the goal was to involve the user community in the maintenance of packages, including former contribs.
+
+I first presented the idea to Pierre Cast\'eran and Hugo Herbelin in the end of 2017, then to the Coq development team in the beginning of 2018.
+I used the following months to prepare the content of the Manifesto repository with the intent to announce the project at the Coq workshop that was held in Oxford in July 2018.
+
+\begin{figure}
+	\begin{center}
+		\includegraphics[width=15cm]{logo.eps}
+		\caption{
+			The logo of Coq-community.
+			This logo was created by Aras Atasaygin as part of the Open Logos project (\url{http://openlogos.org/}).
+		}
+	\end{center}
+\end{figure}
+
+The manifesto spelled out three objectives: the long-term maintenance of interesting Coq packages; the creation of collaborative documentation; and the creation of an editorial board to put forward the most valuable packages.
+
+The first objective has been quite successful since little more than a year after its creation, the Coq-community organization now hosts 20 projects (among them, 11 were transferred from the coq-contribs organization) maintained by 15 principal maintainers (myself not included).
+The organization has three owners, which are among the most active members.
+
+Contribs are only transferred to the Coq-community organization when they find a volunteer maintainer.
+A successful way of recruiting such volunteers has been to propose to the people submitting pull requests on contrib repositories whether they wanted to become the contrib's maintainer within Coq-community.
+
+The second and the third objective have not yet taken shape.
+
+The collaborative documentation objective is based on an idea of Pierre Cast\'eran to create tutorials based on concrete Coq projects, to demonstrate advanced formalization techniques.
+While the initial writing of such a tutorial is a task that can only been undertaken by a single individual, or a small group, the interest of having it live in an organization like Coq-community will be to help maintain and improve the tutorial over time.
+Furthermore, once a first example is available, we intend to propose to other experienced Coq users to contribute their own.
+
+The objective of creating an editorial board was meant as an answer to a recurring critic that the contribs used to receive, which was that contribs were accepted without any curation process regarding their quality.
+However, such critic has not been expressed recently, so the need to create this editorial board has not been pressing.
+
+A fourth, implicit, objective was to be a hub for exploration and documentation of maintenance best practices.
+This has been successful with the development of a set of templates that can be used to generate a Travis CI configuration file, an opam file, a Nix file, and a README, based on a meta file stored in YAML format~\cite{benkiki2009yaml}.
+The creation of Coq-community has also triggered and contributed to efforts by Erik Martin-Dorel and myself to come up with efficient methods of setting up CI for Coq projects (as I mentioned in Section~\ref{sec:open-issues-distribution}).
+
+\subsection{Open issues, future work}
+
+\label{sec:open-issues-coq-community}
+
+A lot remains to do to scale Coq-community, besides making progress on the second and third objectives.
+We need to provide maintainers better maintenance guidelines, and better automation.
+This is not only useful to maintainers within Coq-community, but also in the rest of the Coq ecosystem, as this is an opportunity to identify pain points in the maintenance of Coq packages, and to solve them with documented best practices, and tools allowing more automation.
+Some ideas could be found by observing how larger and older community organizations, such as Vox Pupuli, proceed.
+
+\section{Conclusion}
+
+Modern and attractive package ecosystems are made of a multitude of small and large open source libraries.
+When a popular package is depended upon by many projects, but has only a single maintainer, it creates a risk, of the maintainer suddenly becoming unresponsive, and the package not being updated anymore.
+I have shown that a large proportion of popular packages are single-maintainer packages, and the mitigation models that users of these packages can adopt in such situations of unresponsiveness.
+Among them, the friendly fork model is often the best for the community, but it can be costly to start a fork, and it does not help very much if the new fork is also a single-maintainer package.
+This is why users can create community organizations for the collaborative, long-term maintenance of an ecosystem's packages.
+Such organizations can reduce the cost of forking, while creating better guarantees for the future of the fork.
+I have shown that this model of community organizations has emerged in a number of package ecosystems.
+Finally, I have presented the Coq-community organization that I founded on this model for the Coq ecosystem.

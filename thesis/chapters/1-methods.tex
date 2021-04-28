@@ -1,0 +1,333 @@
+\chapter{Methods}
+
+\label{chap:methods}
+
+\section{Introduction}
+
+While the next chapters of this thesis are concerned with a very diverse set of research questions arising from the development, maintenance, and evolution, of Coq and its ecosystem, the methods that are used are consistent in the whole thesis, so I choose to present them here.
+
+I describe in the following sections how software repository data was collected and analyzed, with the particular concern of showing causal impact when this could be done.
+I also give more technical details regarding both the analysis pipelines, and the automation that I implemented (through a bot) for the Coq project.
+
+\section{Origin of datasets}
+
+\subsection{Fetching data from GitHub}
+
+\label{sec:fetch_data}
+
+Most of the software repository data is mined directly using GitHub's APIs.
+GitHub now provides two types of APIs.
+Version 3 of GitHub's API~\cite{github_REST_API} is a classic REST API~\cite{fielding2000}, from which information can be obtained through GET requests.
+Version 4~\cite{github_graphql_API}, that was announced in September 2016~\cite{github_graphql_API_announcement}, is a GraphQL API.
+The GraphQL query language~\cite{byron2017graphql} is a rich, typed language, that allows specifying exactly what information is needed.
+It opens the door to faster requests and a reduced bandwidth usage, compared to the REST API, because only the data that is really needed is sent.
+It also allows users to reduce the number of requests by batching several queries into a single one.
+The only limit is what the server manages to fetch before a timeout that GitHub has set to about 10 seconds.
+Therefore, I systematically prefer the use of the GraphQL API over the REST API.
+However, due to how recent it is, the GraphQL API is still missing some fields that the REST API provides.
+In this case only, I fall back to using the latter, but also send feedback to GitHub support on what is found missing.\footnote{
+	For instance, in Section~\ref{sec:community-emerging}, I needed to fetch the creation date of GitHub organizations.
+	I first used the REST API because the field was not available in the GraphQL schema, but I also sent feedback to GitHub staff, and they added the missing field less than a month after.
+}
+
+Here is an example of GraphQL query (from Section~\ref{sec:community-emerging}):
+
+\begin{verbatim}
+query searchOrganizations($query: String!, $cursor: String) {
+  search(type: USER, query: $query, first: 50, after: $cursor) {
+    userCount
+    pageInfo {
+      endCursor
+      hasNextPage
+    }
+    nodes {
+      ... on Organization {
+        login
+        name
+        description
+        websiteUrl
+        createdAt
+        membersWithRole { totalCount }
+        repositories(first: 1, orderBy: {field: STARGAZERS, direction: DESC}) {
+          totalCount
+          nodes {
+            stargazers { totalCount }
+            assignableUsers { totalCount }
+          }
+        }
+      }
+    }
+  }
+}
+\end{verbatim}
+
+A single request returns 50 organizations resulting of a GitHub search with a given query, and for each of them, its login, name, description, website URL, creation date, its public membership count, its repository count, and for its most starred repository, its number of stars and assignable users.
+Using the REST API to fetch the same information would have required a first request to the search endpoint resulting in only 30 results, and returning only the organization login (plus a number of irrelevant fields to ignore).
+For each resulting organization, a request to the organization endpoint would have returned the name, description, website URL, creation date, and number of public repositories (plus a number of irrelevant fields).
+Again for each organization, a second request to the public members endpoint would have returned a list of members (limited to 30), but no total count.
+Thus, obtaining an exact count (if that was required) would have needed to iterate through pages of results (and sending a new request for each additional page).
+Getting the most starred repository would have required browsing through pages of results of the organization's repositories because the API endpoint for listing an organization's repository currently only support sorting by creation, update, or pushed date, or by name.
+But even assuming that sorting by number of stars was supported, getting the most starred repository would have required sending a request that would have yielded the top 30 most starred repositories, and a large quantity of data for each, including the number of stars, but not the number of assignable users.
+Finally, the assignee endpoint would have been used to get the number of assignable users.
+Unfortunately, once again, getting the number would have required going through pages of results, each of them containing various irrelevant fields about each assignable user.
+Overall, we can conclude that using the GraphQL API makes it possible to gather data that researchers would have never dared to request with the REST API.
+
+I am not aware of any previous empirical software engineering study having relied on GitHub's GraphQL API.
+This could be due in part to the fact that this API is quite recent, and most established tools are still relying on the REST API, but also to the fact that only few software engineering papers describe their data collection in details.
+In an unpublished paper from 2018~\cite{mombach2018github}, Mombach and Valente compare various ways of accessing GitHub's data in empirical studies: the REST API, GHTorrent, and GitHub Archive.
+They acknowledge the existence of the GraphQL API, and state the need to extend their comparison to this fourth method.
+
+Every time I fetch a new dataset from GitHub, I make it publicly available, to foster reproducible research, and to make it possible to build further studies on this basis.
+
+\subsection{Dataset from Libraries.io}
+
+\label{sec:libraries-io}
+
+Libraries.io is a service monitoring packages from 36 different package managers and registries.
+They have gathered a dataset~\cite{andrew_nesbitt_2017_808273} that they make publicly available since June 2017.
+It has been used in a few empirical studies on package ecosystems already, mostly by Decan and Mens and their collaborators~\cite{decan2018evolution, decan2018impact, constantinou2018breaking, decan2019empirical, zerouali2019diversity}, but also very recently by Dietrich \emph{et al.}~\cite{dietrich2019dependency}.
+In Section~\ref{sec:single-maintainer-libraries}, I use this dataset to find popular packages from various ecosystems without having to interface with a diverse set of APIs.
+
+\section{Causality inference from mined software repository data}
+
+\subsection{Correlation is not causation}
+
+Of course, every researcher in empirical software engineering knows that correlation does not mean causation.
+And yet, it is not infrequent to read papers that find an association between two variables of interest, and quickly jump to the conclusion that there is a causal relationship between them (typically the event that happened before is claimed to have had an influence on the event that happened after).
+The ability to predict if an event will occur based on other variables (predictors) is very useful, but only highlights the existence of a correlation between the two variables, and thus should not be used to make recommendations.
+The reason of the correlation might typically be a third, ``hidden'' variable.
+The use of very large datasets does not change anything to this simple fact.
+
+For instance, if we find that the time to the first comment is a good predictor of the time to integration (pull requests that get acknowledged faster are merged faster), we cannot recommend to pull requests authors to post a comment immediately after opening their pull requests (nor to ask someone else to do it for them) in the hope that this would reduce the time it takes for their pull request to get merged.
+The reason the time to first comment is a good predictor is likely because of a hidden variable, such as the interest of the project maintainer for the pull request.
+
+While no one would have seriously believed such a recommendation, and a paper making it would have certainly been promptly rejected, it is not hard to find published papers, from serious authors, that show a correlation, and then, in their discussion section or conclusion, use language that tends to imply that they have found a causation (for instance, through an abusive use of the word ``effect'').
+The main difference with the example above is that the causation they are suggesting is generally plausible, and indeed most likely to be actually true.
+They just did not prove it.
+And this does not diminish the importance of their work, because uncovering correlations is a useful first step.
+Fortunately, it is sometimes possible to go beyond, as there are techniques that allow deriving causation from mined, non-experimental, (software repository) data.
+
+The most noble way of deriving causation is through randomized experiments with a control group, and there are examples of such studies in the literature, including some going beyond laboratory experiments.%
+\footnote{
+	For instance, Morgan and Halfaker~\cite{morgan2018evaluating} demonstrated the impact of the Wikipedia Teahouse on newcomer retention by creating a random control group of new editors who did not receive an invitation to join the Teahouse, and comparing the long-term retention of the two groups.
+}
+However, experiments are generally more costly to run than \emph{a posteriori} analysis of mined data, and they may pose ethical problems (when either the treated group or the control group suffer from a disadvantage, and did not even know they were participating in an experiment).
+To derive causation from past data, researchers can resort to a number of techniques relying on natural \emph{quasi-experiments}.
+Quasi-experiments mean that an observable criterion can be appropriately substituted to random assignment to create treated and non-treated groups.
+In their 2004 paper arguing for evidence-based software engineering~\cite{kitchenham2004evidence}, Kitchenham \emph{et al.} suggested that quasi-experiments should be used when actual experiments are not possible.
+Here, I present one of the simplest quasi-experimental techniques to understand and use: Regression Discontinuity Design (on time series).
+This method, which is very much used in econometrics for quantitative policy evaluation, has been little used in empirical software engineering research.
+It will be applied twice in this thesis, in Sections~\ref{sec:rdd1} and~\ref{sec:causal-analysis} (the latter behind joint work with Annal\'i Casanueva Art\'is).
+
+\subsection{Regression Discontinuity Design}
+
+\label{sec:rdd}
+
+\subsubsection{General presentation}
+
+Regression Discontinuity Design (RDD) can be performed when we have a population of subjects, which we can differentiate on a given axis (the rating variable), and there is a discontinuity (cutoff) along this axis where the population on one side of the cutoff has received a given treatment, while the population on the other side has not. For instance, companies that are above a certain threshold of employees are suddenly subjected to a new workers protection law, or students that have performed better than a certain level on their standardized tests are accepted in a graduate program.
+
+The main idea behind RDD is that subjects that are near the cutoff were almost as likely to fall on one side or the other, and would be very similar in the absence of treatment.
+Thus, the differences that can be observed between the two groups are mostly due to the treatment.
+The most important assumption to be able to do this kind of reasoning, and thus draw conclusions regarding the causal relation between the treatment and the observed difference, is that there are \emph{no other discontinuities which could explain the latter in part}.
+See Angrist and Pischke~\cite{angrist2014mastering,angrist2008mostly} for an accessible and intuitive introduction to RDD, and Lee and Lemieux~\cite{lee2010regression} and Jacob \emph{et al.}~\cite{jacob2012practical} for further details and a practitioner's guide to its application.
+
+Using time as the rating variable, the cutoff is a change (treatment) that occurred past a certain date, on which the observed subjects had no control.
+It is easier to use because it is easy to think of such events.
+However, there are threats to validity that are specific to RDD on time series, as noted in a recent paper by Hausman and Rapson~\cite{hausman2018regression}.
+A first particularity is the capacity of anticipation and adaptation of subjects to the treatment, that affects directly the outcome.
+Time-series are also subject to potential serial auto-correlation of errors (errors at time $t+1$ are not independent from errors at time $t$).
+Failing to take such auto-correlation into account can lead to inaccurately estimate standard errors (and thus to detect a statistically significant effect where no such effect should have been observed).
+See Section~\ref{sec:robustness-checks} for counter-measures that can be applied to mitigate these specific threats to validity.
+
+In this thesis, I give two examples (see Sections~\ref{sec:rdd1} and~\ref{sec:causal-analysis}) of application of RDD on time series (with time as the rating variable), but I believe that RDD with other types of rating variables would also be applicable and useful in empirical software engineering research based on mined software repository data.
+
+\subsubsection{Detailed presentation of the application of RDD in this thesis}
+
+The evolution of the outcome variable around the cutoff is modeled by two different functions, one before and one after the switch.
+Their purpose is to accurately estimate the value at the cutoff in the absence and presence of treatment.
+Since only their value around the cutoff is relevant, we can choose to estimate them on a restricted bandwidth (time window) around the cutoff, or on a larger dataset.
+We also have the choice of different functional forms for these models.
+
+In the context of RDD, the choice of the bandwidth of the analysis and the functional form of the regression is always difficult.
+On the one hand, choosing a larger bandwidth will increase precision because including more data points will reduce standard errors.
+On the other hand, including data points that are far from the cutoff can bias estimation near the cutoff if the functional form is not accurately specified, because those data points will have as much influence on the estimated regression coefficients as the points that are near the cutoff.
+
+In this thesis, we systematically adopt a conservative approach for our main specification, with a relatively small bandwidth around the cutoff to minimize possible bias, and a simple linear model to avoid overfitting.
+However, as a robustness check, we also estimate a linear and a quadratic model on a larger time frame.
+Following Gelman et al.~\cite{gelman2018high}, we include only a quadratic polynomial and not a polynomial of a higher order.
+
+This conservative approach reduces the statistical power of our analysis, increasing the probability of observing false negatives (being unable to detect an effect where such an effect exists), but increases confidence in the results.
+
+When performing an RDD with linear functional forms, we estimate the following regression:  
+\begin{equation*}
+\small
+\arraycolsep=0pt
+\begin{array}{l}
+\mbox{\emph{Outcome variable}}_i = 
+\gamma_0 +\gamma_1 \times \mbox{\emph{Relative date}}_i
++ \gamma_2 \times \mbox{\emph{After cutoff}}_i 
++~\gamma_3 \times \mbox{\emph{Relative date}}_i \times \mbox{\emph{After cutoff}}_i
++ \epsilon_i
+\end{array}
+\end{equation*}
+\noindent where $\mbox{\emph{Outcome variable}}_i$ is the outcome variable for observation $i$; $\mbox{\emph{Relative date}}_i$ is the number of days (or another time unit) from the date of the cutoff (zero is the first period after the cutoff); $\mbox{\emph{After cutoff}}_i$ is a binary variable equal to one if observation $i$ is after the cutoff and zero otherwise; $\mbox{\emph{Relative date}}_i \times \mbox{\emph{After cutoff}}_i$ is called the interaction term; and $\epsilon_i$ is the residual error. This is equivalent to estimating the following two regressions, respectively before and after the cutoff:
+\begin{equation*}
+\small
+\begin{array}{llll}
+\mbox{\emph{Outcome variable}}_i & = &  \gamma_0 + \gamma_1 \times \mbox{\emph{Relative date}}_i + \epsilon_i &
+\text{(for $i$ such that $\mbox{\emph{Relative date}}_i < 0$)} \\
+\mbox{\emph{Outcome variable}}_i & = &  (\gamma_0 + \gamma_2) + (\gamma_1 + \gamma_3) \times \mbox{\emph{Relative date}}_i + \epsilon_i &
+\text{(for $i$ such that $\mbox{\emph{Relative date}}_i \geq 0$)} \\
+\end{array}
+\end{equation*}
+We estimate this regression by Ordinary Least Squares~\cite{wooldridge2015introductory}, and compute heteroscedasticity robust standard errors.\footnote{
+	The errors $\epsilon_i$ are said to be heteroscedastic if their variances differ.
+	The standard calculations for estimation errors assume equal variances~\cite{wooldridge2015introductory}.
+}
+Coefficient $\gamma_0$ is the estimated value just before the cutoff and $\gamma_1$ the slope before the cutoff. Coefficients $\gamma_2$ and $\gamma_3$ are the estimates of interest and will tell us the jump in the outcome variable just after the cutoff and the change in slope due to the cutoff respectively.
+We interpret results as statistically significant if the p-value is below 0.05.
+
+\subsubsection{Related work}
+
+Only a couple of studies that we know of have used RDD in the context of analyzing mined software repository data~\cite{zhao2017impact,trockman2018adding}.
+In both cases, the authors used it to analyze the impact of a change on hundreds of thousands of GitHub repositories (with time as the rating variable).
+This way of applying the method is quite unusual in the sense that the date of the event is specific to each project, and it is difficult to guarantee that there are no other discontinuities around the time of the cutoff.
+As a matter of fact, in the first of the two studies~\cite{zhao2017impact}, the authors acknowledge that the introduction of continuous integration is often concomitant with other structural changes to the project, and in the second one~\cite{trockman2018adding}, the authors carefully state that they have uncovered correlation and not necessarily causation because their observation could be the result of an underlying phenomenon (impacting both the quality and the decision of the maintainer to introduce a badge).
+In this thesis, I show that this method can be adequately applied to demonstrate causal impact on a smaller dataset, coming from a single software project, where it is easy to manually inspect the project's timeline and rule out the presence of other relevant discontinuities.
+
+\subsection{Future work}
+
+As researchers in econometry are quite experienced with dealing with natural quasi-experiments, we intend, with my co-author Annal\'i Casanueva Art\'is, to import some of their other techniques, and apply them to answer software engineering questions.
+
+\section{Software used to retrieve and analyze data}
+
+\label{sec:data-mining-software}
+
+As recommended in the Dagstuhl manifesto ``Engineering academic software''~\cite{allen2017engineering}, let me properly credit software that this thesis relies on.
+This section starts with software that was used in the data analysis pipelines.
+The next section follows up with software that was used to implement automation supporting the development of Coq.
+
+\subsection{Jupyter notebooks, and reproducible research}
+
+I choose to systematically conduct and present the data fetching and analysis code in Jupyter notebooks~\cite{zimmermann2019bugtracker,zimmermann2019ci,zimmermann2019community,zimmermann2019contributors,zimmermann2019librariesio,zimmermann2019templates}.
+Jupyter~\cite{Kluyver:2016aa} is a software to produce computational documents, i.e. HTML documents interleaving formatted text, code, and code outputs.
+The use of computational documents strongly helps the goal of reproducible research, as it makes it easier for anyone, including reviewers but also the original researchers, to reproduce the full series of steps that were used to produce the research outputs.
+When some steps are outside the computational document itself, they must be documented with extra care.
+Computational documents also facilitate the presentation of the evidence, and as such they are considered as supplementary materials to this thesis.
+
+To make the analysis pipelines entirely reproducible, readers must know the exact versions of all the software that was used, and possibly even the broader environment.
+That is why libraries are loaded and their version numbers are printed systematically in the first cell of each Jupyter notebook.
+Furthermore, these notebooks come with a pinned Nix~\cite{dolstra2004nix} file, that makes the environment entirely reproducible.
+This type of dependency specification is supported in particular by the Binder platform~\cite{jupyter2018binder}, and thus, the Jupyter notebooks can be easily run by anyone, even without Nix installed on their systems.
+
+\subsection{Choice of programming language, software libraries}
+
+I chose to use Python~\cite{van2007python} (version 3.7.4) for the data analyses, because of its rich scientific computing ecosystem~\cite{perez2010python}, and its great integration in Jupyter.
+The other candidates that were considered were OCaml~\cite{leroy:hal-00930213}, because this is the language my advisors and I are most familiar with, and Stata~\cite{statacorp2013stata}, because this is the language that my co-author Annal\'i Casanueva Art\'is is most familiar with.
+However, OCaml's scientific computing libraries are less advanced.
+As for Stata, while it includes very advanced packages that allow conducting standard statistical analyses much quicker than in Python, it is a proprietary software, and relying on it would have partly defeated the objective of reproducible research.
+
+The external Python libraries that are used are:
+\begin{itemize}
+	\item Requests~\cite{reitz2018requests} (version 2.22.0) to fetch data from GitHub;
+	\item Numpy~\cite{numpy} (version 1.17.0), Pandas~\cite{mckinney-proc-scipy-2010} (version 0.25.0), Scipy~\cite{Scipy} (version 1.3.0), and Statsmodels~\cite{statsmodel} (version 0.10.1) for the data analysis;
+	\item Matplotlib~\cite{Matplotlib} (version 3.1.1) to display the resulting graphs.
+\end{itemize}
+
+\section{Building automation supporting developers}
+
+\label{sec:bot}
+
+While I have contributed to build many development tools, including various shell scripts, my main contribution in this area is the creation of a bot to automate various tasks.
+This bot is free and open source software, available at \url{https://github.com/coq/bot} under an MIT license.
+
+Bots, or autonomous software agents, are software programs that can act on behalf of humans to conduct what would be otherwise straightforward and repetitive tasks.
+They are persistent: they continuously monitor their environment, and activate themselves autonomously~\cite{franklin1996agent}.
+Bots have recently been used as aids in more and more software development teams~\cite{storey2016disrupting}.
+
+The bot that I have developed for the Coq project now comprises many features, which are documented in the README, some of which will also be referred to later in this thesis.
+The first and most used feature of this bot is a synchronization between GitHub pull requests and GitLab branches to allow the project to use the continuous integration features from GitLab~\cite{gitlab} while keeping GitHub as the central development platform. This feature is currently used by several repositories maintained by the Coq development team (the central Coq repository, and  the Coq package index), by external Coq libraries (the Mathematical Components library), and at least one project outside of the Coq ecosystem.
+The other features are used specifically by the Coq project, although some of them could also apply to other interested projects (in particular the backport management automation discussed in Section~\ref{sec:backporting}).
+
+\subsection{Choice of programming language, technology, software libraries}
+
+I decided to use OCaml~\cite{leroy:hal-00930213} to program this bot because it is a language that provides high safety guarantees, with its strong static type system, without verbosity, thanks to type inference.
+In practice, it means that we get almost no runtime failures once the bot is deployed.
+It is also the language that is used to develop Coq, so all Coq developers are familiar with it (and some of them are experts). 
+
+OCaml nowadays comes with a rich tooling ecosystem.
+I use most notably Dune~\cite{dimino2016dune} as the build system, the OCamlFormat tool~\cite{ocamlformat} for automatic formatting (as a way of experimenting with it before deciding whether to recommend its adoption in the Coq project), Merlin~\cite{bour2018merlin} to provide IDE-like features in Emacs~\cite{stallman1981emacs}, and Nix~\cite{dolstra2004nix} to specify the dependencies.
+
+OCaml's libraries ecosystem is also well adapted to write HTTP servers and clients (and a bot is not much more than a combination of both of these).
+I use most notably the Cohttp library~\cite{cohttp2019}, combined with the Lwt library~\cite{vouillon2008lwt} for asynchronous processing of HTTP requests, the Yojson library~\cite{Yojson} to encode and decode JSON~\cite{json2017rfc}, and JaneStreet's Base library~\cite{JaneStreetBase} as a standard library replacement.
+
+The versions of OCaml and the tools and libraries that are used are not specified here because they can be regularly updated to the latest versions to benefit from the latest features. There are no compatibility constraints regarding the build environment at the current time.
+
+In most standard programming languages, we can find a library for interfacing with GitHub, and OCaml is no exception~\cite{github_REST_API}. However, these libraries are usually nothing more than a one-to-one mapping to GitHub's REST API, whereas I prefer to use GitHub's GraphQL API~\cite{github_graphql_API} as often as I can to reduce the number of requests that the bot needs, and to make them more specific (these advantages of the GraphQL API were already presented in Section~\ref{sec:fetch_data}).
+Given that this API is very recent and mutations (i.e., requests to modify the state of a GitHub repository) were mostly not available when I started this bot, it also uses the REST API when needed, but I intend to have it entirely migrated to GraphQL eventually.
+The bot is not just a GitHub bot, but also a GitLab bot.
+GitLab has also decided to develop a new GraphQL API~\cite{gitlab_graphql_API}, but as of today it is only a stub. When it starts supporting the type of queries and mutations that the bot requires, I intend to migrate it to use the GraphQL API for GitLab requests as well.
+
+Given that GraphQL is a typed query language, we can ensure at compilation time that the request is well-formed.
+For this purpose, I use the graphql\_ppx\_re library~\cite{graphql_ppx_re}.
+
+Finally, I use the cloud platform Heroku~\cite{heroku} to deploy the bot.
+
+\subsection{Architecture}
+
+The bot has grown according to the needs for automation in the Coq project, initially as a single file, and is now incrementally being rearchitectured around the idea of providing a library of base bot components that can be used in a trigger-action programming model.
+
+Trigger-action programming~\cite{huang2015supporting} is a programming model that has mostly been studied in the context of smart-home automation, with the idea of providing a programming framework and mental model that is accessible to anyone.
+The most popular trigger-action programming platforms as of today are IFTTT and Zapier~\cite{rahmati2017ifttt}.
+Interestingly, both of them provide a GitHub integration, and Zapier provides a GitLab integration as well, but they do not include sufficiently advanced triggers nor actions to perform the kind of things that this bot does.
+
+Its components are of three types.
+Each of these types are given two names, one following the terminology of Huang and Cakmak~\cite{huang2015supporting}, and the other one following the GraphQL terminology of the corresponding type of requests~\cite[Section~3.2]{graphql_spec}:
+
+\begin{description}
+	\item[Event triggers / Subscriptions] are the events that the bot listens to. When such events happen, it is GitHub / GitLab that sends requests with a payload at a specific endpoint provided by the bot (viewed as an HTTP server).
+	\item[State triggers / Queries] are the conditions that must be met, and the additional information that must be gathered, to perform an action. The current state is queried by the bot through one or several HTTP requests (the bot is acting as an HTTP client).
+	\item[Actions / Mutations] are the state-changing requests that are sent in response to some event, and some conditions being met. Again, the bot is acting as an HTTP client, and an agent on the service (GitHub or GitLab, possibly both) that is being updated.
+\end{description}
+
+Components of a given type for a given service are defined in a specific module.
+The business logic combining these various components in relevant workflows belongs to a central ``callback'' function (executed for each event trigger).
+
+\subsection{Related work}
+
+Last year, GitHub announced a new feature (currently in beta) called GitHub Actions~\cite{github_actions}.
+This is a new example of the trigger-action programming model, although it has not yet been studied by the trigger-action programming research community.
+The building blocks can be written in any language (typically scripting languages), and run in Docker containers.
+The blocks are combined in a custom domain specific language based on the YAML syntax~\cite{benkiki2009yaml}.
+GitHub additionally provides a graphical user interface to configure the workflow without manually writing the corresponding YAML.
+Furthermore, they encourage sharing and reusing actions (the building blocks) between GitHub users.
+This is a possible alternative to the bot for all the tasks that are triggered by events internal to GitHub.
+On the other hand, the bot also supports triggers on other services like GitLab, which would be out of scope for GitHub Actions.
+
+In the academic literature, research on developer support automation through bots is still relatively new, but it is gaining momentum, with the creation this year of an International Workshop on Bots in Software Engineering, and a repository listing bot-related research~\cite{Bot_Research_Repository}.
+
+\subsection{Open issues, future work}
+
+\label{sec:open-issues-bot}
+
+Currently the bot is run through a user account (coqbot) that was created by a Coq developer in 2015, and used for various things since then, including repository mirroring, previous attempts at manually reporting status checks, and by myself for the migration of preexisting issues to GitHub (see Chapter~\ref{chap:bug-tracker}).
+Nowadays, GitHub's recommendation is that bots are created through GitHub Apps~\cite{github_apps}.
+To encourage this migration, GitHub gives access to special resources exclusively to Apps~\cite{github_checks_announcement}.
+Another advantage of Apps is that it can be easier to install for new users of the bot (no webhooks to set up manually, at least on the GitHub side), and that it gives access to webhook logs to the person in charge of deploying the app (instead of the various projects that use it, but do not maintain it).
+
+Consequently, it seems that the way forward will be to migrate to a GitHub App.
+However, this may also have some drawbacks.
+In particular, GitHub Apps have to declare a set of permissions that they require to operate, and as the needs of automation increase in the Coq project, the App will need more and more permissions.
+But if other projects use the same App, they may be bothered with a prompt to accept new permissions even though these new permissions may be of no help to them.
+A solution could be to manage multiple Apps, requiring a subset of permissions, for each type of feature, but if they are managed by the same program, this can lead to complexity in deciding with which token to authenticate, and if they are managed by different programs, this is more work for whoever deploys and maintains them.
+
+\section{Conclusion}
+
+In this chapter, I have presented the methods I use throughout the thesis.
+This includes fetching new datasets by querying GitHub's GraphQL API, whose importance I have highlighted on an example, deriving causal effects from mined software repository through the use of RDD, a technique imported from econometrics, implementing analysis pipelines in Jupyter notebooks to enable reproducible research, and building automation to support developers through the creation of a bot.
+This chapter complements the description of my approach as an insider within a development team, which I have given in Section~\ref{sec:approach}.
+
+I hope that my presentation of GitHub's GraphQL API and of RDD will enable other researchers to take advantage of them in future research.
+That is why I have presented them with much detail.
+The bot that I have developed is also designed to be useful to practitioners, beyond the sole Coq development team.

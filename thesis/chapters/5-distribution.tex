@@ -1,0 +1,588 @@
+\chapter{Package distribution}
+
+\label{chap:distribution}
+
+\section{Introduction}
+
+Efficient software engineering and the conception of large software systems critically rely on reusable code~\cite{Sametinger:1997:SER:260943}.
+Since the rise of open source ecosystems and package managers, software reuse has become a systematic coding practice, even for small and medium-sized software projects.
+Decan \emph{et al.}~\cite{decan2019empirical} found that a majority of packages depend on other packages in all seven ecosystems they studied.
+
+Ecosystems of good, open source libraries can be the criterion that makes a programming language successful in general, or in a particular application domain (much more than specific language features~\cite{meyerovich2013empirical}).
+For instance, this is what made me choose Python for my data analysis instead of OCaml, which is a language that I like more and have more experience with (cf. Section~\ref{sec:data-mining-software}).
+
+However, having a community producing good, reusable libraries is not enough: the distribution model of these libraries to the user community is of critical importance as it will directly impact how much effort is required for library authors to make their libraries available, and for users to reuse preexisting code, rather than building their own.
+
+Libraries, or other kinds of reusable software artifacts such as plugins, extensions, and tools, are generally distributed as single units called ``packages'', through a ``package manager''.
+While package ecosystems have recently received much attention from researchers, academic research on the topic of package management is more limited, and is usually focused on technical solutions to very specific problems (cf. our list of academic papers studying package manager design, and package manager ecosystems~\cite{nesbitt2019papers}).
+
+While a number of empirical comparisons of various package ecosystems have been produced in recent years~\cite{bogart2016break,decan2016topology,kikas2017structure,Bogart2017,decan2019empirical,dietrich2019dependency,decan2019package}, there is a lack of papers reviewing socio-technical options that package manager designers can choose from, or comparing socio-technical merits of existing package managers.
+And these options are numerous because the design space of package management has largely been explored by many software engineers, having built a great variety of solutions over the last three decades.
+
+During this long period, some early problems, in particular the ones from a pre-web era, have become obsolete, and others have emerged as the practice of software reuse through package managers has grown to unforeseen proportions~\cite{ooms2013possible}.
+
+In this chapter, I attempt to sketch the landscape of package management, starting with some definitions, a few words of history, and a non-exhaustive list of socio-technical options.
+Presenting these options is important because, as noted by Mens~\cite{mens2016ecosystemic}:
+``The main challenge for any software community resides in how to design and structure its ecosystem in such a way that it fosters a lively community, while at the same time maintaining the quality, stability and reliability of the ecosystem''.
+
+Then, I present the history of package distribution in the Coq ecosystem, what unresolved issues remain, and some options to address them.
+
+\section{Definitions}
+
+\paragraph{Package}
+
+A software \emph{package} is a piece of software bundled in a way that makes it easy to distribute and reliably install.
+The most basic packages are tarballs containing source code and an \emph{autoconf}-style~\cite{autoconf}, automatic install procedure.
+Packages can use a standard layout and provide standard meta-data expected by a specific package manager.
+
+\paragraph{Manifest file}
+
+When a package must provide standard meta-data, this is generally done through a manifest (or meta) file.
+This file typically contains information on the package dependencies, possibly with its author, homepage, bug tracker URL, license, version number, and build procedure.
+
+\paragraph{Package manager}
+
+A \emph{package manager} is a software tool that can reliably install and remove a piece of software on a computer.  One of the tasks of the package manager is to install all the required dependencies besides the requested software.  Sometimes, such step will require making choices about the version of the dependencies to install, and this step alone can be highly complex~\cite{mancinelli2006managing}.
+
+\paragraph{Package registry}
+
+A \emph{package registry} is a central location for sharing software packages (i.e. not just software but also the required knowledge to properly install them), on which a package manager depends.  The package registry may or may not host software source code, and precompiled binaries, besides basic meta-data such as dependencies, and, often, licensing information.
+Package managers frequently come with a specific package registry, but some package managers are mere user-side tools that depend on preexisting registries,\footnote{
+	This is the case of yarn~\cite{yarn}, which is an alternative to npm~\cite{npm} to install npm packages, and of esy~\cite{esy}, which is a package manager for OCaml and ReasonML that supports both opam~\cite{opam2013} and npm registries.
+}
+while some package registries are alternative locations from which to fetch (other) packages,\footnote{
+	For instance package registries internal to a company, or GitHub's own package registry~\cite{github_registry} which supports a number of package managers.
+} typically for use with a package manager that can support alternative registries.
+
+\paragraph{Package repository or archive}
+
+\emph{Package repository} or \emph{archive} are synonyms for package registry that are more suited when the entire content of the registry is stored as hierarchically-organized files, and can easily be mirrored, or forked.
+Sometimes, the package repository is a single git repository in which people can collaborate on package meta-data:
+examples include Homebrew (\url{https://github.com/Homebrew/homebrew-core}), MELPA (\url{https://github.com/melpa/melpa}), nixpkgs (\url{https://github.com/NixOS/nixpkgs/}), opam (\url{https://github.com/ocaml/opam-repository})...
+
+\paragraph{Package index}
+
+A \emph{package index} is a central location to search for existing packages.
+This is often strongly tied to (and thus confused with) the package registry.
+However, some exceptions make the distinction necessary: the package registry is usually machine-friendly, and a human friendly website may be needed on top, in which case, the indexes of two package registries based on the same technology might be quite different,\footnote{
+	This is the case of the OCaml package index \url{https://opam.ocaml.org/packages/}, and the Coq package index \url{https://coq.inria.fr/opam/www/}.
+    Both of them are based on the opam technology.
+}  the package distribution method may be entirely distributed (with the package manager requiring URLs instead of package names), in which case there is no registry but an index can still be useful to discover what is ``out there'',\footnote{
+	This is the case of the Go programming language whose package manager expects URLs of git repositories.
+	These repositories contain the required meta-data to install the package.
+	Therefore, there is no central package registry but a package index can still be useful, and there exist several like GoDoc \url{https://godoc.org/}, and GoSearch \url{http://go-search.org/}.
+} or the package registry might be so large that some restricted index is preferred.\footnote{
+	This is the case of the ReasonML ``redex'' package index \url{https://redex.github.io/}.
+	The listed published packages are in the npm repository.
+	The index also supports listing unpublished packages on GitHub.
+}
+Finally, even manually curated lists\footnote{
+	Such as the ones from the awesome lists movement
+    \url{https://github.com/sindresorhus/awesome}
+}~\cite{wu2015rise} may be considered as package indexes.
+
+\section{A brief and incomplete history of package managers}
+
+\begin{figure}
+	\begin{center}
+		\includegraphics[width=15cm]{../notebooks/package-managers/timeline.png}
+		\caption{
+			Timeline showing the creation dates of popular package managers.
+			Application-specific package managers are on the top, system package managers are on the bottom.
+		}
+		\label{fig:timeline}
+	\end{center}
+\end{figure}
+
+Because package managers' origins are multiple, I present those of both system package managers, and application-specific package managers.
+However, because it is the latter which have the most structuring impact on programming language ecosystems, I will focus on them in more details.
+Figure~\ref{fig:timeline} gives the creation dates of a number of popular system and application-specific package managers.
+
+\subsection{System package managers}
+
+System package managers and registries started to be developed and used in the early nineties to solve the problem of reliable software installation on multiple workstations.
+One of the earliest academic publication on package management was presented at the USENIX LISA conference in 1990~\cite{manheimer1990depot}.
+
+Since then, package managers and their associated registries have become the core infrastructure allowing to create GNU/Linux distributions.
+Early and still very much used examples include dpkg~\cite{dpkg} and the associated Debian package format (which is mostly used through higher-level tools like APT~\cite{apt}), and RPM~\cite{rpm} (both a package format and a package manager, which is mostly used through frontends such as yum~\cite{yum}).
+A lot of GNU/Linux distributions are based on just these two.
+
+System package managers based on the model prevalent in the GNU/Linux world were also invented for macOS (for instance Homebrew~\cite{homebrew}), and for Windows (for instance Chocolatey~\cite{chocolatey}).
+Nowadays, mobile phone operating systems like iOS and Android also have their package managers and registries (app stores), although they are used to distribute mostly non-free software, and they do not support inter-dependencies, contrarily to all the previously mentioned package managers.
+
+Finally, Nix~\cite{dolstra2004nix}, and Spack~\cite{gamblin2015spack}
+are ones of the few system package managers currently in use which are
+the product of academic research.
+
+\subsection{Application-specific package managers}
+
+The history of application-specific package managers and registries begins at almost the same time, but is much richer.
+
+The first application-specific, comprehensive package registry was CTAN, the Comprehensive TeX Archive Network~\cite{greenwade1993comprehensive}.
+This project intended to solve the issue of TeX packages distribution, in a pre-web, internet era.
+Before its creation, there were multiple, independently-managed archives, available through different technologies (FTP and e-mail in particular), with different file structures, and which would all make available a set of existing, freely redistributable TeX packages, that none could claim to be comprehensive.
+CTAN introduced a standard file structure, and a mirroring protocol, so that it would be easy for anyone to download any TeX package from a geographically-close server.
+
+CPAN, the Comprehensive Perl Archive Network, was created in 1995 on the CTAN model, and CRAN \cite{hornik2012comprehensive}, the Comprehensive R Archive Network, was created in 1997, inspired by both CTAN and CPAN.
+Despite the name similarity, and the assumed heritage, each of these registries has grown independently and has developed their own practices.
+
+Of the concerns and issues that were solved at this time, not many are still relevant today.
+In particular, modern package managers now assume that the original source code location will continue to be available and therefore do not necessarily mirror the source.
+With fast internet connection and CDNs (content delivery networks~\cite{buyya2008content}), the geographical location of the server hosting the source code is no longer an issue either.
+
+Many more package managers have been developed since then for various ecosystems (see Figure~\ref{fig:timeline}), and sometimes a single ecosystem got several competing package managers or registries.
+PEAR~\cite{pear} was a package repository with a strong curation policy that was created in 1999 for the PHP ecosystem, but since 2012, it has mostly been replaced\footnote{
+	Cf. this Stack Overflow answer: \url{https://stackoverflow.com/a/34200828/3335288}.
+} with a new system (Composer / Packagist~\cite{composer}).
+PyPI~\cite{pypi} was introduced in 2002, but pip~\cite{pip}, which is nowadays the official package manager to interface with the PyPI registry, was only created in 2011; and Anaconda~\cite{anaconda}, which is a package registry for scientific computing, has been introduced in 2012, and also contains a database of Python packages.
+Hackage~\cite{hackage} is used to distribute Haskell packages since 2005, but Stackage~\cite{stackage} is a popular alternative created in 2015 to bring more stability.
+npm~\cite{npm} is the official Node.js package manager since 2010.
+Due to its versatile nature (since it allows uploading any type of binary package), it is used for more than just distributing Javascript.
+Yarn~\cite{yarn} is an alternative package manager to interact with the npm registry that was introduced in 2016.
+In some ecosystems (such as the Haskell ecosystem), Nix~\cite{dolstra2004nix} has emerged as a strong alternative to using an application-specific package manager.
+
+\section{Socio-technical options for designers of package managers}
+
+A wide design space has already been explored by creators of package managers.
+However, there has been no survey describing the various options available, and their possible consequences.
+This is an attempt at starting such a categorization.
+
+\subsection{Options for package registries}
+
+\label{sec:options-registries}
+
+There are a number of technical options to implement a package registry.
+Some will have consequences for the package manager (client); some will have social / cultural consequences on the way the ecosystem is organized.
+Finally, there are also some policy options that can be related to or independent of technical assumptions, and which can naturally have social / cultural consequences as well.
+Decan \emph{et al.}~\cite{decan2019empirical} have argued that policies of package registries are important and can influence the overall ecosystem structure, and the behavior of maintainers.
+For a review of the cultural differences among different package ecosystems, see Bogart \emph{et al.}~\cite{Bogart2017}.
+
+\paragraph{What is uploaded to the registry?}
+
+The registry can accept uploads containing only package meta-data, in which case the meta-data should contain a URL for the sources, from which the registry or the end-user (with the help of a package manager) may fetch them.
+Or, it can require package uploads to contain sources as well, or even pre-built binaries.
+
+If the registry does not require uploading pre-built binaries, then the package meta-data typically contains build instructions that can be executed, either by the registry, or by the package manager.
+
+Historic package repositories such as CTAN, CPAN, CRAN, Debian, require the uploading of the sources.
+This ensures that the registry can continue to serve them even if the official source location is down.
+
+This is also the case of more modern registries like RubyGems.
+However, while Ruby packages generally contain only source code (Ruby being an interpreted language), nothing prevents anyone from including pre-built binaries in their packages.
+
+Similarly, npm accepts packages containing any kind of content, either interpreted source code, or pre-built binaries.
+
+Finally, package repositories like opam, MELPA, or nixpkgs only accept package meta-data to be uploaded.
+
+\paragraph{What is distributed by the registry?}
+
+The registry makes available at least some meta-data for each package, but it may, in addition, serve the sources of the package, and possibly a pre-built version.
+If the registry serves the sources but does not require uploading them, then it must mirror them.
+If the registry serves pre-built binaries but does not require uploading them, then it must be able to build them automatically.
+
+For instance, opam serves the package meta-data and can optionally serve the sources~\cite{opam_manual}, while nixpkgs serves package meta-data and provides a binary cache that can be used in substitution to install packages that have been built on the server.
+Finally Debian serves package meta-data, source code, and binaries.
+
+\paragraph{Type of storage}
+
+The traditional approach is to host an archive containing hierachically-organized files (either just package manifests, or even their source code).
+This is a technically simpler solution as it is easy to set up a new archive, to mirror an existing one, or to copy the entire content of the archive locally (especially when the archive only contains package manifests).
+
+This archive can optionally be versioned as a whole, for instance as a git repository hosted on GitHub.
+In this case, the package manager can be configured to fetch the archive using git or the tarball automatically generated by GitHub.
+
+For instance CocoaPods, homebrew, and nixpkgs use a git repository to store the content of the whole archive, and the archive can be fetched directly from GitHub.
+
+Nowadays, there are many registries that rely on a database instead.
+This is the case in particular of npm, RubyGems, and PyPI.
+
+\paragraph{How can the registry be browsed?}
+
+In the case the registry is an archive, its content can be accessible through protocols like FTP or HTTP (``file-system-based registry''), or the full archive can be only downloaded as a large tarball, to be unpacked and browsed locally (``portable registry'')~\cite{nesbitt2019categories}.
+
+A combination of both is also possible: for instance, an opam registry serves both individual package manifests and a tarball containing the content of the whole archive and used to synchronize a local copy.\footnote{
+	This URL will download a single manifest file: \url{https://opam.ocaml.org/packages/0install/0install.2.14/opam}.
+	This URL will download the full archive: \url{https://opam.ocaml.org/index.tar.gz}.
+}
+
+In the case the registry is a database, it is typically accessible through a RESTful API~\cite{fielding2000} (although other types of APIs like a GraphQL API~\cite{byron2017graphql} are also possible).
+This API may be documented or not depending on whether the authors of the registry view this API as a public interface that anyone can rely on, or as an entirely private interface to be used only between their registry and the package manager associated with it.
+However, stable and documented APIs are useful not just to build competing package managers (clients), but also to build services like Libraries.io~\cite{andrew_nesbitt_2017_808273} that present information about packages differently, and are much helpful to researchers (cf. Section~\ref{sec:libraries-io}).
+
+It is possible for an archive-based registry to still provide an API.
+For instance, this is the case of CPAN~\cite{metacpan_api}.
+
+When a registry is accessible through an API, it usually provides an endpoint to list all the packages available, but this endpoint may return incomplete results, in particular if there is a notion of private packages.
+
+\paragraph{Access control to download a package}
+
+Accessing the entire registry or a subset of packages may be restricted to properly authenticated and authorized individuals.
+
+An enterprise registry, as supported by npm, would typically require authentication to access anything from the registry.
+Some registries also support publishing both public and private packages.
+This is the case of npm, and of GitHub's registry~\cite{github_registry}.
+Authentication is only necessary to access private packages.
+
+\paragraph{Technology to publish a new package}
+
+Package upload can be handled by the same tool as package download (the package manager), or by some other tool.
+A solution that is very easy to implement is to create a GitHub repository of package meta-data (manifest files) and to allow uploading a package by creating a pull request.
+For users, it is likely however to be a more complex workflow than having a publish command in the package manager.\footnote{
+	See some critics of this workflow at:\\ \url{https://discuss.ocaml.org/t/opam-experiment-and-future-developer-experience-improvements/493}.
+}
+Some wrapper tool, like opam-publish~\cite{opam-publish}, can be provided to automate as much of this workflow as possible.
+
+An alternative solution adopted by many early package registries is to have a web-form to submit a new package.\footnote{
+	This is the web form to submit a package to CTAN: \url{https://ctan.org/upload}.
+	And this is the web form to submit a package to CRAN: \url{https://cran.r-project.org/}.
+}
+
+\paragraph{Access control / policy to publish a new package}
+
+Most registries that accept publishing through a command will require the user setting up an account first, but registration will be open to anyone and effective immediately.
+Some, like CPAN,\footnote{
+	This is the web form to apply for a CPAN account: \url{https://pause.perl.org/pause/query?ACTION=request\_id}
+} have an account application process.
+
+The registries that rely on pull requests to add or update packages usually have a peer-review process to ensure that the package meta-data meets some basic standards (but this does not mean that the content of the package itself is reviewed).
+They usually do not require the person publishing the package to the registry to have any connection with the package author (which on the other hand is assumed in registries relying on a publishing tool).
+
+Note that the review process may not scale properly unless specific efforts are made to extend the reviewer team.\footnote{
+	For instance, nixpkgs is implementing some changes to encourage more people to participate to the reviewing effort: \url{https://github.com/NixOS/rfcs/blob/138600b/rfcs/0039-unprivileged-maintainer-teams.md}.
+}
+While the review process is likely to result in higher quality package, it may also incentivize package authors to put less effort to prepare their submission because they can rely on the review to catch problems~\cite{duran2014cocoapods}.
+
+Finally, some registries can have a peer-review process of the package content before they accept it.
+This is (or was, since no new package have been accepted since 2013) the case of PEAR, the first PHP package registry.
+Every package submission required its own RFC (Request For Comments) and ended up with a vote.
+
+\paragraph{Technology to publish a new version}
+
+In most cases, the technology for publishing a new version is the same as for publishing a new package, but there are some exceptions.
+For registries where package submission is via a web-form, it can be the case that the maintainer of the package then gets granted a more direct access to the archive, where they can upload new versions without going through the form again.
+In some registries, each package gets its own version control repository, in which case new versions are published through this repository.
+
+For instance, the conda-forge registry accepts submission of new packages through pull requests on a central repository (\url{https://github.com/conda-forge/staged-recipes}), but afterwards, a new GitHub repository is created on which the maintainer can upload new versions with or without peer-review.
+
+Finally, new versions of a package can be automatically picked from its development repository.
+This is the case of MELPA: the initial submission is via a pull request on a GitHub repository, but then every new commit is considered to constitute a new version.
+MELPA Stable only considers the subset of tagged commits.
+
+\paragraph{Access control / policy to publish a new version}
+
+Most package registries which accept publishing via a tool will consider that publishing a new version can only be done by the user who published the first version, or other users that have been delegated permission.
+This is also the case for more traditional registries like CTAN, CPAN, CRAN, and Debian, and of conda-forge for which the initial submission is via a pull request.
+
+It is interesting to note that while application-specific package registries allowing submission via a tool usually assume that the submission is by the author of the package, this is not the case of system package registries like Debian, Homebrew, or nixpkgs, nor of the application-specific registry conda-forge.
+Thus the person (or persons) that are allowed to publish new versions in the latter registries differ from the development team of the corresponding package.
+
+The Elm package manager is special in that it does not have its own authentication system, and instead piggy-backs on GitHub's own access control.
+It considers that anyone with the permission of publishing a new tag on a GitHub repository is legitimate to publish a new version on the package registry.
+
+For package registries that allow submission of a new version through a pull request, the new version will undergo the same kind of review as for a first version.
+It is usually not necessary that the submission of the new version is done by the user who submitted the first version.
+
+Finally, it is worth noting that while some ecosystems value very short release cycles, others like R / CRAN do not, because of the heavy review process.\footnote{
+	On the CRAN policy page~\cite{cran_policy}, we can read: ``Submitting updates should be done responsibly and with respect for the volunteers’ time.
+	Once a package is established (which may take several rounds), “no more than every 1–2 months” seems appropriate.''
+	Decan \emph{et al.}~\cite{decan2019empirical} have found that CRAN packages do receive significantly less updates than packages in other ecosystems.
+	As they noted, this is probably a consequence of this policy.
+}
+
+
+\paragraph{Package naming}
+
+Most package registries accept any name (in a restricted character set that typically includes alpha-numeric characters, dashes and / or underscores).
+However, more and more package registries allow (or enforce) scoping, which means that the name is composed of two parts (usually separated by a slash), the first one is the name of the owner (individual or team), and the second part is the name of the project.
+
+For instance, npm supports scoped and unscoped package names (but only scoped names are authorized for private packages), while the Elm package manager and GitHub's package registry require scoped package names.
+
+\paragraph{Removing a version or a package}
+
+It is usually considered a bad practice to remove a version of a package after it has been published~\cite{npm-unpublish-documentation}.
+This was authorized nonetheless by several package managers like npm, until they decided to restrict this practice after the leftpad incident~\cite{npm-unpublish-update}.
+
+GitHub's registry similarly restricts any package or version removal (exceptions may be granted in special cases by contacting GitHub staff)~\cite{github_registry_update}.
+
+When packages are submitted through pull requests on a repository, the maintainers of the repository will generally reject pull requests removing packages except in very specific circumstances.
+However, they may accept pull request fixing package manifest files, even though doing so without amending the version number would be considered bad practices in other ecosystems (such as Debian).
+
+Some package registries, in particular for system package managers, prefer to keep a single version available, and in this case it is normal practice to remove older versions (this is just an update to the package and the version number is changed).
+
+Finally, note that in registries striving to provide a consistent set of packages at a single version, like Debian, but also like CRAN or Stackage, packages may be removed from the set when they do not build with the available versions of their dependencies.
+
+\paragraph{Tooling for collaboration and development}
+
+The package registry may make some development tools available either optionally or automatically.
+Tools can include a version control system, a bug tracker, continuous integration, etc.
+
+This was most useful before the rise of very large software forges like GitHub, which make it easy for anyone to have access to this kind of tooling today, and imposing every package to be developed in the same place is not likely to be successful.
+
+However, when publishing a package to the registry is not done by the developers of the package (as in Debian, Homebrew, or opam), it can be useful to have a bug tracker to report issues specific to the package and not the underlying software.
+
+\paragraph{Automated checks}
+
+Linters are useful to avoid frequent mistakes.
+They are usually applied to the manifest file, either by the publishing tool, or via continuous integration on the package repository.
+It is generally helpful to be able to run the linter locally, and without publishing anything in case the linter is successful, so the linter should be made available as a separate command, even if it is run automatically by the publish command.
+
+Continuous integration can also test the build of the package either before, or after it is submitted, and possibly notify maintainers of failing packages.
+
+\paragraph{Version curation}
+
+Some registries intend to provide a curated set of packages.
+This includes registries for system package managers, e.g. Debian, but also application-specific registries like Stackage, which is a curated version of Hackage, the Haskell package registry.
+
+Only providing a curated registry in a given ecosystem may lead to frustration from some users wanting to rely on older releases.
+This can lead to initiatives such as Microsoft's MRAN (\url{https://mran.microsoft.com/}), which provides daily snapshots of past CRAN versions.
+
+\paragraph{Delay to release}
+
+A lot of application-specific registries, and some registries for system package managers, make packages available very soon after they have been submitted: this is the rolling release model.
+
+On the other hand, curated registries are more likely to have a release cycle with release events when the whole public registry is updated at once.
+For the users who want stability, this is usually a great solution, but for some other users who want to take advantage of new versions as soon as they are available, it can be frustrating if the main registry in the ecosystem is not on a rolling release model.
+This is for instance the case of the R ecosystem (CRAN is curated and new versions of packages are only distributed with new releases of the R language), and it leads maintainers of actively developed packages to host their own registries~\cite{boettiger2015drat}.
+
+\subsection{Options for manifest files}
+
+The manifest is the file that is used to store package meta-data that the package registry and package manager will use.
+Some of this meta-data is purely informational and aimed toward humans (author names, package description), some is informational but may be automatically parsed by tools (license information stored in SPDX format~\cite{spdx} may then be used to inform package authors / users of license compatibility issues), some can be used to implement package search and filters (tags), and some is mostly intended to be read by tools such as the package manager (dependency information).
+
+\paragraph{File format}
+
+The manifest file format can be based on a standard DSL syntax (JSON~\cite{json2017rfc}, YAML~\cite{benkiki2009yaml}, TOML~\cite{preston_toml}, S-expressions~\cite{rivest1997sexp}...), can use a custom DSL syntax, or can use a normal programming language (typically the ecosystem's programming language).
+
+The last solution is common with interpreted languages (Perl, Ruby, Python...), and its main advantage is that no specific parser is needed.
+However, it also means that interpreting the manifest can lead to arbitrary computation, which is not likely to be viewed as a good thing.
+
+The main advantage of using a standard DSL syntax is that it will make it easier for any external service to parse the manifests (this is the reason given by CocoaPods to move from Ruby to JSON~\cite{duran2014cocoapods}).
+
+Nix uses its own language for package management, which is a non-Turing-complete language where some computations are possible (including if-then-else expressions, and string, list, set concatenation / merging).
+
+\paragraph{Version of the package}
+
+Usually the version of the package will be in a constrained format usually limited to numbers separated by dots with possible trailing alpha-numeric qualifiers (e.g. beta1).
+Some package managers / registries enforce the use of a format matching the Semantic Versioning definition~\cite{preston_semantic_versioning}.
+In general, they cannot however, verify that Semantic Versioning is actually respected (no breaking change in a minor release, no new feature in a patch-level release).
+An exception is the Elm package manager which automatically bumps the version number based on the API changes.
+Some registries use alternative versioning policy: for instance Hackage uses the Haskell Versioning Policy~\cite{haskell_versioning_policy} (that was drafted before Semantic Versioning was introduced).
+
+Besides the meaning that the version number conveys to humans, one of the most important aspects of version numbering is the ability to sort version numbers.
+Unfortunately, there is no unique convention regarding version number sorting.
+Semantic Versioning defines that pre-releases are denoted by appending a dash followed by some pre-release identifiers, and that such pre-release versions come \emph{before} the corresponding normal version.
+Debian's convention, also used by opam, denotes pre-release with a tilde instead of a dash~\cite[Section 5.6.12]{debian_policy_manual}.
+Nix's unspecified implementation\footnote{
+	See: \url{https://github.com/NixOS/nix/blob/b095c06/src/libexpr/names.cc}.
+} only gives precedence to versions with a trailing \verb|pre| (possibly after a dot or dash separator) over normal version numbers.
+
+\paragraph{Versions of the dependencies}
+
+A manifest usually contains dependency information with version constraints.
+There are some exceptions to this: in registries providing a single version for each package, manifest files may be lacking any version information regarding their dependencies.
+
+Most manifest formats accept both specifying depending on version ranges or exact versions of a dependency, and it is then a matter of convention what kind of range to use.
+It is usually advised for library authors to specify version ranges (as large as possible) to impose fewer constraints on depending application / libraries, while it is advised for application authors to pin their dependencies (specify exact versions) to maximize reproducibility.\footnote{
+	See ``Why do binaries have Cargo.lock in version control, but not libraries?'' in the Cargo Book's FAQ~\cite[Chapter 5]{cargo_book}.
+}
+
+In some ecosystems it is common practice to use open ranges (ranges whose upper bound is larger than the last published version).
+This will typically be the case in ecosystems were library authors are expected to follow semantic versioning (in which case the upper bound will be the next major version, and it will be a strict upper bound).
+In some ecosystems, it is frequent that packages do not specify any upper bounds.
+This is the case for instance in the opam registry, but manifests can be amended later on to add upper-bounds when a compatibility breakage with a newer version of a dependency is noticed.
+
+\subsection{Options for package indexes}
+
+The design of package indexes is important because it may influence the discoverability of packages, and which dependencies software developers will rely on in the end.
+
+\paragraph{Package sorting}
+
+Some package indexes only provide a search engine but no list of all packages.
+This is the case of npm in particular.
+
+Among the package indexes that provide a list of all packages, the most standard sorting criterion is package names (Debian, MELPA, nixpkgs, opam, RubyGems...).
+Alternative criterion can be based on initial publication date, date of last release, popularity indexes, etc.
+
+The Elm package index has an unusual sorting algorithm that puts forward the packages by authors that are most active in the community (counted by number of talks given to Elm conferences), and resorts to alphabetic ordering for the rest.\footnote{
+	\url{https://github.com/elm/package.elm-lang.org/blob/a8b9f08/src/backend/Memory.hs\#L223-L324}
+}
+
+npm's package search supports sorting using several metrics (including popularity, quality, and maintenance indexes).
+
+\paragraph{Package search and filtering mechanisms}
+
+Most package indexes have a search mechanism using the textual information present in the package title, description, and possibly documentation.
+In some cases, this search is reduced to a simple filtering mechanism looking for an exact match of the searched string with a part of the package name.
+
+Some more advanced searching tool exists, like Hoogle (\url{https://hoogle.haskell.org/}) which searches function by type signatures in all the packages in Stackage.
+
+Some package indexes also allow filtering by tags (freely defined by the package maintainer), or categories (chosen from a predetermined list).
+
+Nixpkgs filters out packages with non-free licenses by default.
+Some more advanced filtering mechanisms based on license types could be designed, although I do not know any package index having implemented them.
+
+\paragraph{Metrics to display}
+
+Given that most registries accept package submission without any quality assessment, there can be a number of available packages designed to solve the same problem, and it is a challenge to present information that will enable the user to choose.
+Some package indexes display a number of metrics to allow discriminating between various packages.
+These metrics can include popularity metrics based on number of GitHub stars, number of forks, number of downloads, number of other packages depending on it, maintenance metrics based on the date of the last release, the date of the last commit on the source repository, the number of open issues, etc.
+Some indexes show, for each package, the exact list of its dependencies and its reverse dependencies.
+
+\paragraph{Embedded documentation}
+
+To help users learn about a package before deciding to use it, some package indexes display documentation extracted from the package.
+For instance, npm and PyPI display the package's README.
+
+Some package indexes can rely on a unified documentation format to display the full package documentation.
+This is the case, in particular, of the Elm package index (the presence of documentation is even enforced when uploading a package to the registry).
+
+\subsection{Options for package managers}
+
+Package managers will be the tools that developers will directly rely on and interact with every day.
+Their design can have a strong impact on the productivity of developers.
+
+\paragraph{Global, user-local, mutli-profile, or project-local installation}
+
+Naturally, system package managers, such as the one provided by any Linux distribution, support installing packages globally (i.e. any user will then be able to run the installed software).
+Some system package managers additionally provide the ability to install a package locally in a user's profile, without requiring administrator permissions.
+
+Application-specific package managers can provide the possibility of installing packages globally as well, although this may create conflicts with other package managers installing in the same global location.
+On the contrary, application-specific package managers installing packages in a local user profile will usually do so in their own directory, and add this directory to the user's \verb|PATH|.
+
+Some package managers (opam for instance) support installing multiple package sets in distinct profiles that can be switched to, allowing parallel installation of multiple versions.
+
+Finally, many package managers provide a way of installing a package set specific to a given project.
+In some cases, this is managed by a tool external to the package manager itself (for instance venv in Python).
+This is especially useful so that developers can easily and reliably set up an environment containing all the packages they need, to work on a software project, regardless of what else they are working on at the same time / have installed on their system.
+
+\paragraph{Multi-registry support}
+
+Most package managers support multiple registries although there is often a specific registry that is considered to be the central hub for the ecosystem, and that is configured by default in the package manager.
+
+Alternative registries are useful to distribute private / proprietary packages, development versions of packages, to distribute packages that do not meet the policy requirements of the central package registry, or to reuse an existing package manager for another ecosystem.
+
+\paragraph{Support for installing from source repositories}
+
+Some package managers support installing packages directly from the source repository (typically a GitHub repository) instead of installing from a registry.
+This is often a way to access the development version of a package, without any effort from the package maintainer, other than maintaining a manifest file within the sources.
+
+Some package managers, like the Go package manager, only support this method, which means that there is no need to manage a package registry.
+
+\paragraph{Local binary cache}
+
+When packages can be installed locally to a project, it can frequently happen that the same package will be needed for multiple projects.
+This may lead to building it and storing it multiple time, which is a loss of time and disk space.
+
+A solution around this problem is to build and store packages only once, in a directory managed by the package manager, and to use symbolic links, or any other virtual installation method to ensure that the required packages are made available in the environment local to a project.
+
+A good model to implement this kind of local binary cache is the store that the Nix package manager uses.
+This is the model that has been followed to implement the new build system in the Cabal package manager~\cite[Chapter 5 ``Nix-style Local Builds'']{cabal_manual}.
+
+\paragraph{Management of diamond dependencies}
+
+When two direct dependencies share a common indirect dependency, there are two ways of proceeding: either install two copies of the indirect dependency, or find a version that is suitable for both.
+
+The first solution is the one used by npm, and it makes the dependency selection algorithm much simpler, at the price of disk space, and of causing trouble if what this common dependency ends up leaking in the main program at two different, and incompatible versions.
+For some programming languages, such solution will simply be impossible to implement, because of namespace conflicts.
+
+The second solution requires solving an NP-complete problem, and in some situation the result may just be that two packages cannot be installed together~\cite{mancinelli2006managing}.
+
+\paragraph{Management of dependency updates}
+
+The package manager may provide some help to discover direct dependency updates, evaluate whether the new version is compatible, or worth to update to (for instance by showing release notes, or even an API diff like the Elm package manager does), whether updating is possible given the constraints imposed by the other packages, and finally update the manifest file and the installed set of packages is such a decision is taken.
+
+\paragraph{Build system integration}
+
+In some programming language ecosystems, the package manager and the build system are tightly integrated or even part of the same tool.
+This usually requires a high level of control on the ecosystem, and thus mainly happens when the designer of the package manager is the designer of the programming language, and the programming language is relatively recent.
+While such tight integration can help the build system be aware of where the libraries are located, it is also important to leave open other scenarios where the build system is used without the package manager.
+Otherwise, it may seriously harm any effort by other package manager / registry maintainers to distribute a piece of software written in this programming language.
+
+\section{Package distribution in the Coq ecosystem}
+
+\subsection{Historical overview}
+
+\label{sec:coq-package-distribution-history}
+
+The Coq development team has provided a package distribution method for more than twenty years.
+
+Coq 6.1, released in 1997, came with forty so-called ``user contributions'' or ``contribs'' for short, that were distributed in a single tarball,\footnote{
+	This tarball can still be downloaded from the Coq website: \url{https://coq.inria.fr/distrib/V6.1/contrib/}.
+} and were organized in sub-directories corresponding to the geographical location of the authors.
+
+Coq 6.3, released in 1999, came with over fifty contribs.\footnote{
+	See \url{https://web.archive.org/web/20001029020059fw\_/http://coq.inria.fr/contribs1-eng.html}.
+}
+These contributions could be all downloaded as a single tarball, or as individual tarballs.
+An index, with a search engine, was provided, and each package had its own presentation page embedding a description, the authors' names, and the package's README, that was automatically generated from a ``description'' file.
+As with CTAN, this was only a registry and an index, but no support was provided for locally fetching and installing a given package (beyond the installation target in the included Makefile).
+
+The initial submission process was very basic: the author of the package had to complete a text-form (i.e. create the package manifest file), and then send it by e-mail with a link to where the package could be downloaded.
+Later on a web-form was introduced.\footnote{
+	See \url{https://web.archive.org/web/20140813011527/http://coq.inria.fr/pylons/contribs/new}.
+}
+After the package had been submitted, it would be maintained by the development team to stay compatible with new releases of Coq (which frequently contain breaking changes).
+This model corresponded to a mental model where proofs / formalization works, once achieved, are not meant to evolve beyond what is needed to stay compatible with the evolution of the underlying proof language.
+It was particularly well suited for packages that would typically be submitted by PhD students, ready to share their work and move on to other things.
+
+But this model also had drawbacks: it could not scale to hundreds, or even thousands of packages, because the manpower to do the maintenance work was limited; there was no quality assessment, and some users complained about this; it was not suited for libraries whose authors kept maintaining and evolving, and these started to be distributed outside of the ``Coq contribs'' scope.\footnote{
+	See \url{https://sympa.inria.fr/sympa/arc/coq-club/2013-10/msg00119.html}.
+}
+
+In October 2013, so not long after opam (the OCaml package manager)~\cite{opam2013} was first released, the idea of turning it into a package manager for Coq was mentioned publicly for the first time, by Thomas Braibant.\footnote{
+	See \url{https://sympa.inria.fr/sympa/arc/coq-club/2013-10/msg00096.html}.
+}
+This idea was all the more reasonable given that Coq itself is written in OCaml, and many packages contain plugins, i.e. OCaml files interfacing with the Coq API.
+In fact, the question of the distribution of Coq packages had been recently explored by several people (including Guillaume Claret and Cyril Cohen~\cite{claret2015opam}), and quickly gained support from a number of other developers and users.
+Over the following year, the Coq package registry was created by Guillaume Claret, Guillaume Melquiond, Enrico Tassi, and others, and started to be advertised in November 2014 (post on Guillaume Claret's blog~\cite{claret2014opam}), and more and more over time as the preferred method for installing Coq packages.
+
+The package manifests are maintained in a specific GitHub repository (\url{https://github.com/coq/opam-coq-archive}), which is published as an opam registry; and instructions are provided on how to use it with opam (which requires installing Coq itself with opam).
+On the other hand, the Coq package index (\url{https://coq.inria.fr/opam/www/}) uses a custom website infrastructure and design, that is quite different from the OCaml package index (\url{https://opam.ocaml.org/packages/}).
+By convention, all Coq package names are prefixed with ``coq-'' to avoid any clash with packages hosted in the official OCaml registry.
+
+\subsection{Open issues, design exploration, future work}
+
+\label{sec:open-issues-distribution}
+
+The current method to distribute Coq packages still suffers from a number of issues.
+
+To start with, installing Coq with opam is non-trivial: Windows's support is limited;\footnote{
+	Windows is not even mentioned in the opam install page (\url{https://opam.ocaml.org/doc/Install.html}), nor in the FAQ.
+	It is only mentioned in the unofficial packages at the bottom of the Distribution page (\url{https://opam.ocaml.org/doc/Distribution.html}).
+}
+CoqIDE requires dependencies (GTK) outside of the scope of opam, and installing them may be more or less well documented depending on the system / Linux distribution.
+It is possible to install Coq using a system package manager, or an installer for Windows or macOS, but these installation procedures do not make it possible to use Coq packages installed through opam.
+
+Mastering opam (even just as a user) requires significant efforts that some Coq users, like those with a mathematical background, rather than a computer science / technology background, are not necessarily able or willing to undertake from the start.
+
+Furthermore, using opam requires compiling everything from source, including the OCaml compiler, the Coq software, and the requested packages, which may add up to dozens of minutes of build time (when this is not hours), given how long some Coq packages take to build.
+Related to that is the fact that opam does not yet have any local binary cache support, which means that installing a package set for a specific project would require recompiling everything that is needed from scratch, just for this project.
+
+Finally, the Coq package index needs some improvements to be easier to navigate, and to put forward a curated list of most recommended packages.
+
+With Michael Soegtrop and Enrico Tassi, in particular, we have explored the idea of creating a Coq platform, which would allow to easily install a curated subset of Coq packages.
+This has been first experimented in the Windows installer, which now includes a set of commonly used plugins and libraries.
+The idea, now largely supported, is to define a clear inclusion and version selection policy for the Coq platform, and to provide multiple ways of installing it (a Windows installer, a macOS installer, but also a Snap~\cite{snap} package, an opam package, and to encourage maintainers of Coq packages on other registries to provide a Coq platform package as well).
+This platform will be mainly targeted at newcomers, users with less technological experience, and users who want a stable and curated set of packages they can rely on.
+It will likely be maintained closely to, but independently of Coq itself, and will be released with a short delay after each new Coq release.
+
+The model of such a platform already exists in other ecosystems with the Haskell platform~\cite{haskellplatform}, the Scala platform~\cite{scala_platform}, the TeX Live distribution~\cite{texlive}, and is being explored by others, e.g. the OCaml plaform~\cite{ocaml_platform}.
+This is an alternative model of package distribution that is complementary to the package manager / registry model (although platforms often include a package manager so that users can install additional packages when they need them), and that shares some similarities with registries with release cycles like CRAN.
+
+We have also explored solutions to make expert users more productive.
+One question in particular was how to distribute an up-to-date, pre-built, development version of Coq that users can use in CI.
+Erik Martin-Dorel has proposed a solution based on pre-built Docker~\cite{hykes_docker} images, and I have proposed a solution based on Nix and Cachix~\cite{kozar_cachix}, a tool allowing to create a custom public binary cache for Nix.
+Both of these solutions have been implemented to test packages from coq-community (see Chapter~\ref{chap:maintenance}).
+
+Following my explorations around Nix, several Coq developers are now considering making the Coq package index support two package management technology at once: opam, which will continue to provide more flexibility regarding the combination of versions to use, and Nix, which will come with a binary cache, and will provide a fast and reliable install experience, and other advantages such as sandboxed environments.
+
+\section{Conclusion}
+
+Package ecosystems can play a major role in a programming language success, and the way packages are distributed (in particular the policies of package registries) can strongly impact the shape and structure of a package ecosystem.
+Because no one had yet (to my knowledge) published any survey on socio-technical options for the design of package managers, registries, and indexes, I have started one by listing many such options, and giving real examples of their application in popular package managers.
+The community of package manager designers is much more a practitioner community than an academic community, but they are self-organizing so that ideas can be shared across ecosystem borders (through initiatives such as the Manifest podcast \url{https://manifest.fm/}, by Alex Pounds and Andrew Nesbitt, and \url{http://package.community/}, started by former npm maintainer Kat March\'an).
+Such a survey would likely be of interest to them.
+
+In the second part of this chapter, I focused on package distribution in the Coq ecosystem: it has a long history, and it evolved by successive adaptations to the issues that developers and users encountered.
+No one had yet written a complete summary of this evolution.
+I also presented recent progress and design exploration to which I participated, and which intended to address recently expressed needs of new users and project maintainers.

@@ -1,0 +1,101 @@
+\chapter{Conclusion and open issues}
+
+\section{Conclusion}
+
+At this point, I hope I have convinced the reader of the importance of addressing software engineering challenges, during the development, maintenance and evolution of long-lived academic software systems, especially programming languages.
+At least, it would seem that I have managed to convince the members of the development team of Coq ---a programming language to prove theorems and properties of programs, on which I have focused during the three years of my PhD, and around which I gravitated during the two previous years.
+
+Coq is the result of a long-line of research.
+The development of this proof system started in the 1980s at Inria, but its origins can even be traced further back to the invention of interactive proof assistants in the 1970s, to seminal work on automated theorem proving in the 1960s, to the invention of functional programming in the 1950s, and even to the first attempts to formalize mathematical logic in the beginning of the 20\textsuperscript{th} century~\cite{coq_refman}.
+
+Coq, and other proof assistants created around the same time, have made it possible to actually verify that the proofs of very complex mathematical theorems were correct, and that certain critical or tedious programs did behave as they were supposed to.
+Challenges that users of such proof assistants have encountered when working on large-scale projects gave rise to a new domain of research called proof engineering~\cite{ringer2019qed}.
+But these successes also popularized the use of proof assistants, resulting in an increased number of users and in bigger projects, whose authors expressed new needs such as stability and compatibility.
+The needs of new users, and of authors of big projects, but also the age of the Coq system, and the will to open the development to contributors all around the world, have all led to much more classical software engineering issues, related to software development processes, software maintenance and evolution, open source development, and software ecosystems.
+
+I personally started to get interested in Coq because I had ambitions to explore massively collaborative theorem proving~\cite{zimmermann2014proof} (as part of a more general taste for open collaboration around science~\cite{zimmermann2014science}).
+But after I first met my PhD advisor, I shifted my focus on making Coq easier to use for mathematicians, because this would be a prerequisite to allow large numbers of people to use Coq collaboratively~\cite{zimmermann2014interface}.
+And after I started contributing to the code of Coq, I began identifying many software engineering issues that needed to be solved to allow Coq to evolve more efficiently, and to better address the needs of its current and future users.
+I was not the only one in the development team to put efforts on these questions: I have already cited the numerous contributions of, among others, Maxime D\'en\`es, Emilio Gallego Arias, and Ga\"etan Gilbert.
+But I decided to go further by turning this into academic research.
+Incidentally, I went back that way to the study of open collaboration.
+
+I adopted the approach of insider action research, which I have presented in Section~\ref{sec:approach}.
+It means that I have made concrete contributions to Coq's development tools and processes, and to the organization of its ecosystem, by collaborating with other developers and users.
+But also that I have contributed to the scientific literature, by reporting on this experience, and conducting rigorous empirical evaluation to validate some actions.
+
+My contributions, listed in more details in Section~\ref{sec:contributions} range from identifying new research questions, to proposing generic solutions that can address some of them, and conducting empirical analyses based on mined software repository data.
+In a first part, composed of Chapters~\ref{chap:pull-based-development}, \ref{chap:bug-tracker}, and \ref{chap:release}, I have presented a historical overview and addressed concerns related to the maintenance and evolution of the Coq system: the switch from push-based to pull-based development, which facilitated an increased involvement of external contributors, and an increased focus on the quality of integrated changes; the switch of the bug tracker from Bugzilla to GitHub, which led to more bug tracking activity, and more external participants in the discussions; the switch to shorter release cycles, which was associated with challenges of efficiency and efficacy of release management.
+In a second part, composed of Chapters~\ref{chap:distribution} and \ref{chap:maintenance}, I have focused on concerns at the level of package ecosystems, regarding both package distribution and maintenance, drawing inspiration from other package ecosystems to improve the one of Coq.
+
+\section{Open issues and future work}
+
+I identified and already listed many open issues, that I would like to address in the future, related to the topics of the previous chapters (cf. Sections~\ref{sec:open-issues-bot}, \ref{sec:open-issues-ci}, \ref{sec:open-issues-distributed-merging}, \ref{sec:open-issues-backport}, \ref{sec:open-issues-changelog}, \ref{sec:open-issues-release}, \ref{sec:open-issues-distribution}, \ref{sec:open-issues-community-org}, and~\ref{sec:open-issues-coq-community}).
+In the remainder of this conclusion, I present some additional open issues which are out of the scope of these chapters.
+
+\subsection{Documentation}
+
+Documentation is a critical asset to make a software system accessible (especially a programming language, and all the more a complex proof language such as Coq).
+Fortunately, Coq is better and better documented, with the user community having contributed numerous tutorials and books.
+From the perspective of core developers, the main documentation objectives are to continually improve the reference manual~\cite{coq_refman}, which must be clear and exhaustive, because experienced users frequently refer to it (especially as most advanced features and corner cases are much less frequently documented in tutorials).
+Beyond clarity and exhaustiveness, a challenge is consistency with the current state of the system.
+Tremendous progress has already been made with a culture shift toward documenting new features or updating the documentation when conducting user-visible changes \emph{before} integrating such changes.
+This culture shift began with the adoption of pull-based development, and was further emphasized thanks to the introduction of the pull request template (cf. Section~\ref{sec:template}).
+
+The reference manual has received major improvements recently, starting with the adoption of a new format based on Sphinx~\cite{sphinx}.%
+\footnote{
+	This followed a proposal by Cl\'ement Pit-Claudel in 2016 to port the manual to this format, using a custom Sphinx extension that he had created to support the specific needs of the Coq manual~\cite{pitclaudel2016}.
+}
+Many things remain to do, including designing a better structure so that all parts of the system are properly covered, but also improving the build infrastructure of the manual to add more static guarantees on the consistency of the documentation with respect to the code.
+For instance, work is in progress to automatically verify that the documented grammar of the language corresponds to the one that is actually defined in the code.
+
+\subsection{Bug triaging}
+
+While we have shown in Chapter~\ref{chap:bug-tracker} that the switch of bug tracker had a positive effect on bug tracking activity, leading in particular main developers to report more systematically the bugs they encounter, we have not measured the effect on the bug fixing rate, the bug resolving rate, or more generally on bug triaging activities.
+Even assuming that the impact on the bug resolving rate was positive, this resolving rate is still too low, with the number of open issues steadily increasing (it was just above 1,000 at the date of the bug tracker switch two years ago, and is now just above 2,000, even if a quarter of the migrated open issues have been resolved in the meantime).
+This high number does not necessarily mean anything wrong, as issues are now more systematically opened as long-term reminders of possible improvements or unresolved questions.
+But it also makes it harder to browse through open issues.
+To compensate, it would be very useful to have a good triaging model, which would allow developers to know the status of an issue at a glance, and quickly find those that are relevant to them.
+A lot of previous work exists on automatically triaging issues, most particularly on automatically assigning issues to relevant developers or teams (e.g. the recent work of Sarkar \emph{et al.}~\cite{sarkar2019triaging}).
+However, most of the techniques and tools that were developed are intended for a commercial development context (and those intended for open source are only good for basic triaging tasks~\cite{kallis2019ticket}): in open source, where most work is voluntary, assigning issues to developers without their consent does not work, and just leads to assignment losing meaning.
+Involving the community in the bug triaging process, to cope with many incoming, and backlog issues, is a challenge that we have to address in order to maintain a satisfying bug tracker state, without falling for the easy solution of using a bot to close stale issues.%
+\footnote{
+	More than a thousand GitHub users and organizations are using Probot Stale~\cite{stale} to automatically close stale issues and pull requests.
+}
+
+\subsection{Separating design discussions from implementation discussions}
+
+Many developer communities have observed that mixing discussion on design and on specific implementation details is not generally a good idea.
+That is why some open source projects have a process for reviewing proposed design documents, separately and before reviewing the corresponding implementation.
+Some major programming languages such as Python and Rust have adopted such process to review all major feature proposals, as well as proposals to change development processes.
+The Python model is called ``Python Enhancement Proposals'' (PEP)~\cite{pep1,van2007python}, and the Rust model~\cite{rust_rfc_book} reuses the ``Request For Comments'' (RFC) terminology from IETF.
+Both processes use a GitHub repository for contributors to propose new design documents.
+The Rust RFC reviewing process takes place via pull requests, and when consensus seems to be found, the RFC enters a final comment period (FCP) to validate a proposed decision.
+If the RFC is officially approved, the corresponding pull request is merged.
+On the other hand, given that the PEP process is much older than GitHub and the invention of pull requests, a PEP can be committed directly to the repository, or merged via a pull request, before it is officially approved.
+The review and decision process takes place afterward.
+
+Coq got ``Coq Enhancement Proposals'' (CEP) in 2016 under the impulse of Enrico Tassi.
+It was further refined in 2017 by taking inspiration from Rust and associating the integration of a pull request to the approval of the CEP.
+However, it has not really taken off, in particular because most proposed CEPs have eventually staled instead of being accepted or rejected, and also because major design decisions have continued to be proposed and approved through code pull requests.
+The NixOS organization, which has also an RFC repository, suffered from the same issues, but has recently managed to address them by adopting a complex workflow with shepherd teams and FCPs (inspired by the Rust model)~\cite{gloster2018rfc}.
+The questions for the Coq project are:
+How to adopt a similar successful workflow (probably based on FCP and shepherds) but at a smaller team scale?
+And how to motivate (both core and external) contributors to go through this process rather than submitting feature pull requests directly?
+Can we identify in which cases this extra step is worthwhile?
+
+\subsection{Governance}
+
+As of today, the governance model of Coq has become unclear.
+This is rarely a problem because, as in most open source projects, the default decision process is based on consensus (with silence being implicit consent)~\cite[Chapter 4]{fogel2005producing}.
+Pull requests are not merged when the need for more discussion is expressed, and such discussion can happen during regularly held working groups.
+However, when no consensus is still to be found, what is our decision model?
+We have a designated project leader, and a designated core team.
+Do we follow a benevolent dictator model with the project leader taking decisions ultimately, or do we follow a voting based model?
+At least we have made progress on defining the release management process, with a release manager who acts as the release owner, i.e. the person who gets to decide what goes in a release (cf. Chapter~\ref{chap:release}).
+We have also introduced a code of conduct,%
+\footnote{
+	Code of conducts are an emerging phenomenon in open source projects, intended to provide safe and inclusive communities, and to deal with conflicts and negative feelings~\cite{tourani2017code}.
+}
+and have a designated enforcement team.
+However, we are still missing a clear process for choosing the next release manager, adding and removing core team members, adding and removing code owners (cf. Section~\ref{sec:distributed-merging}), adding and removing members to the code of conduct enforcement team, and changing of project leader.

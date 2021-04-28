@@ -1,0 +1,181 @@
+\chapter{Introduction}
+
+\section{Programming: humans, tools and processes}
+
+Programming is a human activity and, as such, it would be a fundamental mistake to try to understand programming without the human aspects.
+More generally, computer science is not just the science of computers, but of how people relate to (and around) computers as well.
+
+Programming languages do not exist in a vacuum.  They are designed for human programmers.
+When we say a programming language is better than another, it is generally not because it allows programmers to write more programs,%
+\footnote{
+	Most programming languages are Turing-complete, which means that they can express exactly the same pure programs: all the computable functions.
+	To be completely exact, there can be differences in expressiveness between programming languages regarding what impure behaviors, i.e. what kind of interactions with the physical world, are supported.
+	Finally, I should note that the specific programming language that I am focusing on in this thesis, Coq, happens to be a non-Turing-complete, pure, programming language.
+} but because it makes it easier for them to: get started with programming; get a program running quickly; efficiently produce a program that does what it is supposed to do; or continue to reason about, understand and maintain the code of a program after many years, even when they did not author it.
+
+But what is a programming language?
+It is a conceptual model, complemented by a concrete tool, the compiler or the interpreter, that allows the programmer to efficiently instruct the machine how to behave to achieve the programmer's goal.
+However, the compiler is not the only tool that the programmer will use for this purpose.
+Some other tools can turn out to be really useful or even critical to the programmer's success: editors, code formatters, build systems, debuggers, test frameworks, integrated development environments (IDE), libraries, package managers, version control systems, documentation systems, bug trackers, integrated development platforms, continuous integration systems, question and answer platforms, chat systems, and many many more.
+Some of these tools may be strongly tied to the programming language,%
+\footnote{
+	Typically, test frameworks, language-specific support within an IDE, and code formatters are tied to a particular language.
+	Build system and package managers can be generic, or specific to a particular language (and there are indeed many application-specific package managers as we will see in Chapter~\ref{chap:distribution}).
+	Continuous integration systems on the other hand are usually generic, even though several started by being targeted at a specific language (Java for Jenkins~\cite{jenkins}, Ruby for Travis~\cite{travisci}).
+}
+and as such may play a large role in a programming language's success.
+
+The programming language is not the only model that the programmer needs, either.
+When programmers work in teams, they also need a development model, which may itself include a release model.
+In the case of open source development, in particular, where contributions can come from anywhere, and which yields interactions between people that do not always know each other, it is all the more important that this
+development model is shared and well understood by all participants.
+In the rest of this thesis, we will use the word ``process'' to designate these models of expectations for human interactions around software.
+
+\section{Research on developing software systems: the great divide}
+
+Research on software engineering and on programming languages are two subdomains of a more general field of research related to programming.
+The underlying questions of this field are how to make it easier to program, how to make programmers more productive, how to ensure that software systems are correct, fast, etc.
+
+Programming language research is focused on language design and the implementation of compilers and interpreters, while software engineering research is focused on tools and processes supporting the programming task.
+These aspects should be complementary, but unfortunately many programming language researchers have ignored the progress made on supporting tools, the evolution of programming development processes, and the focus given to empirical evaluation in software engineering research, while most software engineering research has stayed focused on the object-oriented programming paradigm, despite the recent trend toward the functional programming paradigm~\cite{murphy2014programming}.
+The consequence is that mainstream languages have tremendous tooling support, sometimes outweighing completely the language design issues, while novel languages developed in academia can lag far behind.
+New languages, like Rust~\cite{matsakis2014rust}, which take advantage of the knowledge from both worlds, have been designed mostly outside academia.
+
+\section{Coq: a proof language developed in academia}
+
+Coq is a proof assistant, i.e. software for interactively developing and automatically verifying mathematical proofs.
+The language of Coq is usually viewed in two parts.
+The first part is the subset called Gallina.
+It is a programming language with dependent types.
+Its type system is powerful enough to express any usual mathematical statement.
+Proving a mathematical statement, or equivalently finding a program of a given type, is an arbitrarily complex task which no automation could ever systematically solve.
+Thus Coq also provides a set of tactics, that can be used to build these proofs and programs incrementally and interactively.
+This second part of the language is less well-specified than Gallina, and thus poses specific compatibility challenges.
+Programs (or proofs) written using tactics suffer from maintenance issues~\cite[Section~7.2]{ringer2019qed} that are reminiscent of those of programs written in dynamically typed languages.
+Work is in progress to provide safer tactic languages that would help address these maintenance issues~\cite{kaiser2018mtac2}.
+In the meantime, Coq developers have to be very careful when evolving some parts of the language, to avoid breaking users' projects in intractable ways.
+
+Coq has been developed at Inria since 1984.
+It has slowly opened to external users, with one of the first milestones being the release of a book about Coq in 2004~\cite{bertot2004interactive} (followed by many more books).
+The distribution of user-contributed Coq packages has started early, and has relied on a modern package manager since 2014 (cf. Section~\ref{sec:coq-package-distribution-history}).
+Efforts have been conducted to open the development of Coq itself to external contributors anywhere in the world starting in 2015 (cf. Section~\ref{sec:towards-pull-requests}, although Coq was free software and patches were accepted much earlier).
+Even if the development today is entirely open, transparent, distributed, and online, with the number of contributors steadily increasing and now well over a hundred, it is still the case that the main developers are Inria employees, and that Coq lacks the huge environmental support that designers of a language within a large company can benefit from.
+Furthermore, this is not just a matter of financial support.
+Given the complexity of the Coq system, a high level of expertise is needed to contribute, which excludes most software engineers without strong mathematical and computer science backgrounds, and means that, like for most scientific software~\cite{segal2008scientific}, the developers are mainly researchers, or engineers with research experience.
+
+As noted in the Dagstuhl manifesto ``Engineering academic software''~\cite{allen2017engineering}, while some research software projects are only episodic artifacts or prototypes meant to be associated with one or a few papers, other academic software projects become long-lived and gain a wide user base.
+This was the case for Coq, and it came with a transition from a co-located development model to a globally distributed one.
+This transition pushed the development team to address not just technical debt, but also so-called ``social''~\cite{tamburri2015social} or ``organizational''~\cite{boats2018organizational} debt.
+Coq users and developers have encountered, or are currently facing, many issues that other successful programming languages and academic software projects have encountered before, or are currently facing as well.
+They are related to the evolution of the language, its ease of access to newcomers (especially as Coq also tries to attract non-programmer, mathematically-inclined users), and its effectiveness for users.
+In particular, a tension appears regarding the evolution of the language, between its initial purpose as a research prototype welcoming experiments, and its newfound role as a stable tool on which large research or industrial projects rely.
+
+The central thesis of this work is that successful programming languages and complex software systems will necessarily encounter what we can classify as software engineering issues, and the programming language research community would strongly benefit from incorporating early on ideas and techniques from software engineering research.
+
+\section{Empirical answers to practitioners' issues}
+
+\label{sec:approach}
+
+My perspective as a researcher is the one of an insider within the Coq development team, who wants to help produce a better system and a thriving community, who identifies concrete issues faced by developers and users, and who uses scientific and practitioner knowledge to address them, evaluate them, and contribute back to the body of scientific knowledge.
+As such my work adopts the framework of insider action research~\cite{coghlan2019doing}.
+The four main steps of action research are diagnosing, planning action, taking action, and evaluating action.
+
+In line with what is advocated by Meyer~\cite{meyer2018empirical}, I start by identifying concrete issues faced by practitioners during the development, evolution and maintenance of Coq and its package ecosystem.
+My position as an insider allows me to discover these issues much more quickly, and contribute new research questions.
+I identified many more questions than I could reasonably address, and I present a number of them in this thesis.
+That is why a lot of chapters or sections have their dedicated ``open issues and future work'' (sub)sections.
+The conclusion additionally contains a number of more general questions, and questions that are not specific to any of the topics addressed in the chapters of this thesis.
+
+Once an issue is clearly identified, I try to find a solution to address it, most often in collaboration with other actors (members of the development team, external contributors, or users).
+The process usually involves searching for existing solutions in the scientific literature, or in other open source projects, proposing an idea, gathering feedback (through public online discussion, during working groups with the development team, or through private discussion with interested individuals).
+
+The implementation step comes after this design step.
+Implementation should be understood in a broad sense.
+It can include actual software development (within the Coq code base, or outside ---for instance, the bot presented in Section~\ref{sec:bot}), but it can also include implementing changes in processes, which is usually associated with an update or an addition to appropriate documentation, and sometimes with an announcement (e.g. announcement of the switch of bug tracker, cf. Chapter~\ref{chap:bug-tracker}, or of the creation of Coq-community, cf. Section~\ref{sec:coq-community}).
+Most often, this step requires having first received support for the proposed action from the development team, or the concerned people.
+This thesis contains a few examples where I have proposed solutions which I did not implement yet, either because I did not receive sufficiently clear support, or because they simply were not high enough on the priority list.
+
+The last step is the validation of the solution that was implemented, through empirical evaluation.
+This step is important to be able to contribute back to scientific knowledge.
+However, empirical evaluation is often difficult, and generally takes time, so not all proposed and implemented solutions have been thoroughly evaluated.
+We should also note that not all solutions are worth being rigorously evaluated.
+Because of the difficulty associated with evaluation, solutions that are not controversial, and are already well-known in the scientific literature (e.g. the introduction of a contributing guide and internal documentation to help newcomers, cf. Section~\ref{sec:newcomers}), do not justify any evaluation effort.
+Some changes (for instance in the management of the changelog, cf. Section~\ref{sec:release-notes}) are known to solve some concrete issues because they make their occurrence impossible, but at the same time they may create other issues that are worth assessing.
+Sometimes, these new issues are easy to identify, and do not require a thorough investigation before carrying the next round of design and implementation of a solution.
+Finally, sometimes, empirical evaluation would be worthwhile and I intend to carry it out, but there has simply not been enough time since the implementation of the solution to allow it yet.
+For instance, the RDD methodology that I present in Section~\ref{sec:rdd}, and which I use to evaluate the effect of introducing a pull request template (cf. Section~\ref{sec:rdd1}), and of switching the bug tracker (cf. Section~\ref{sec:causal-analysis}), does require a sufficient time window \emph{around} the date a change was implemented.
+
+\section{Academic contributions}
+
+\label{sec:contributions}
+
+My contributions include planning and conducting changes in the Coq development tools and processes and in the organization of the Coq package ecosystem.
+However, in this section, I only focus on my contributions to the scientific literature, in the domains of software maintenance and evolution, open source development and open collaboration, and empirical software engineering.
+
+\subsection{New research questions}
+
+I identified many concrete issues faced by practitioners.
+I list many of them in this thesis, but not all of them are novel research questions.
+Novel questions, or at least questions that were, to the best of my knowledge, virtually never studied in the scientific literature so far, include:
+
+\begin{itemize}
+	\item How do GitHub projects manage a growing number of labels? In Section~\ref{sec:labels}, I did some preliminary exploration that seems to indicate that projects manage to grow past a certain number of labels only by introducing label categories, usually denoted by shared prefixes in their names.
+	\item How can pull request templates be instrumented by GitHub projects, and what is their impact? Sections~\ref{sec:template} and~\ref{sec:rdd1} contain a first but necessarily incomplete answer to this question.
+	\item How to test compatibility with external reverse dependencies? In Section~\ref{sec:ci}, I highlight the importance of this question, and some specific challenges. For instance, in order to test projects that exercise recently added features, it is necessary to include projects that are actively developed. Ensuring that they can continually be used to assess compatibility breakage in incoming pull requests requires developing and testing patches when these projects are broken by intentional compatibility-breaking changes.
+	\item How to increase the number of people involved in pull request integration? A large body of literature explores the barriers faced by newcomers and how to lower them. Some previous studies also analyze the migration path for a contributor, from placing their first contribution, to joining the core team. However, there has been less focus on encouraging regular contributors to take a more central role. This is the question treated in Section~\ref{sec:distributed-merging}.
+	\item What is the effect of the bug tracking environment on bug tracking activity? A large literature on bug tracking already exists, but it is rather limited when it comes to comparing bug tracking environments. Chapter~\ref{chap:bug-tracker} explores this question by measuring the impact of a switch of bug tracker.
+	\item How to efficiently manage the process of backporting patches to release branches? Previous works have only focused on the automatic identification of candidate patches for backporting. This question is presented in Section~\ref{sec:backporting}.
+	\item How to manage changelogs and release notes for collaborative projects beyond a certain size? Section~\ref{sec:release-notes} highlights challenges that occur for sufficiently large projects, and that impose to go beyond what standard recommendations propose.
+	\item What are the various socio-technical options for designers of package managers and package registries? As shown in Chapter~\ref{chap:distribution}, previous works have focused on finding technical solutions to very specific problems, or have explored existing package ecosystems, but there is a lack of surveys on the design space that has already been explored in the very numerous package managers and registries created so far. The next step would be to be able to associate design decisions with emerging structures in the package ecosystems.
+	\item How to alleviate the problem of the many single-maintainer packages, that can play a major role in a package ecosystem's success, but at the same time pose a risk on dependent projects because the maintainer could suddenly become unresponsive? In Section~\ref{sec:single-maintainer-libraries}, I show that the prevalence of this type of package is high.
+\end{itemize}
+
+\subsection{New models for addressing some of these questions}
+
+Based on collaboration with other Coq developers and users, exploration of solutions adopted in other open source projects and ecosystems, I have been able to invent or discover new models that can address some questions listed above:
+
+\begin{itemize}
+	\item In Section~\ref{sec:compatibility-testing}, I present the model that we have adopted to test compatibility with external reverse dependencies. Our continuous integration tracks the development branch of many external projects, and an ``overlay'' system allows developers to test patches when compatibility-breaking changes are proposed. This model has increased the confidence of developers when preparing changes, because it gives a better assessment of their impact. Additionally, it has allowed the Coq development team to adopt a ``no stable (ML) API'' policy close to the Linux model (cf. Section~\ref{sec:compatibility-policy}).
+	\item In Section~\ref{sec:distributed-merging}, I present the model that we have adopted to distribute the pull request reviewing and integration process to a larger team of contributors. This model is useful to facilitate the scaling of the number of contributions.
+	\item In Section~\ref{sec:backporting}, I present the model that I have invented (after taking into account feedback from other developers and contributors) to manage the backporting process efficiently. In Section~\ref{sec:release-notes}, I present the model that I have introduced, and which was partially inspired by the GitLab project, to efficiently manage the preparation of release notes. Both of them are useful to streamline the release process, and make it easier to have a rolling release manager position.
+	\item In Section~\ref{sec:community-org-model}, I describe the model of community organization for the long-term maintenance of packages that I have first identified in the Elm ecosystem, shown to be an emerging model in many ecosystems, and instantiated in the Coq ecosystem by creating the Coq-community organization.
+\end{itemize}
+
+\subsection{Reusable assets}
+
+Part of the implementation of proposed solutions was quite specific to the Coq project, but some were implemented with reuse in mind, or have since then been adapted to become reusable, in particular:
+
+\begin{itemize}
+	\item The migration tool that I have adapted to handle the migration of thousands of preexisting issues from Bugzilla to GitHub (cf. Section~\ref{sec:migration}) can be reused by any project wanting to conduct a similar migration (and in fact it already has).
+	\item The bot that I have created for the Coq project (cf. Section~\ref{sec:bot}) is sufficiently generic to be reused in other projects. So far, other projects have relied on the instance I host to synchronize their pull requests on GitHub with a GitLab repository (and take advantage of GitLab CI). I have also been in contact with people interested in hosting their own instance of the bot for a similar usage. Additionally, the bot could be reused for projects wanting to apply the backporting process that I proposed.
+\end{itemize}
+
+Finally, all the empirical analysis pipelines that I have built are distributed as Jupyter notebooks~\cite{zimmermann2019bugtracker,zimmermann2019ci,zimmermann2019community,zimmermann2019contributors,zimmermann2019librariesio,zimmermann2019templates}, and the new datasets that I have fetched are made available as well.
+This should enable reproducing the results of this thesis and allow researchers to adapt them to explore variations of the associated questions.
+
+\subsection{Application of a methodology for causality analysis}
+
+In Section~\ref{sec:rdd}, I present in great detail a method for causality analysis on non-experimental data, called Regression Discontinuity Design, and imported from econometrics.
+Together with Annal\'i Casanueva Art\'is, we have applied this method to analyze the impact of the switch of Coq's bug tracker from Bugzilla to GitHub.
+We have shown that the switch of bug tracker provoked an increase in the bug tracking activity by main developers, and the participation of more external contributors in the bug tracking discussions.
+We have completed this causal, quantitative analysis, with a qualitative analysis based on interviews with Coq developers that help us interpret the results.
+This work is presented in Chapter~\ref{chap:bug-tracker}, and was published in the 2019 International Conference on Software Maintenance and Evolution~\cite{zimmermann:hal-01951176}.
+I applied this method a second time in Section~\ref{sec:rdd1} to evaluate the impact of introducing a pull request template with a checklist in the Coq repository.
+These examples show the value of this method, which I believe could be applied to many more examples in the context of empirical software engineering on mined software repository data.
+Using causality analysis methods can help go beyond the current norm in mining software repositories, which is the uncovering of associations between different factors, taking very large datasets into account in an attempt to compensate the fact that the results stay at the level of correlations.
+This type of research is extremely useful, and sometimes it is very hard to go beyond the identification of correlations.
+However, to be able to assert with confidence some recommendations for practitioners, we have a duty of trying to go beyond correlation analysis, as often as we can.
+The presentation of this method was meant to be as clear and as practice-oriented as possible, so that other researchers can use it in their own research projects.
+
+\section{How to read this thesis?}
+
+Beyond Chapter~\ref{chap:methods}, which presents cross-cutting methods that are used in several places in this thesis, all chapters are independent.
+They are organized in a natural progression, but the reading order does not matter.
+In Chapter~\ref{chap:pull-based-development}, even the four main sections can be read in any order.
+On the other hand, most topics are connected, and therefore, there are many cross-references.
+Given the wide variety of addressed topics, related work and ``open issues and future work'' may generally be found in relevant sections.
+
+The thesis is divided in two main parts.
+Chapters~\ref{chap:pull-based-development} (adopting pull-based development), \ref{chap:bug-tracker} (switching bug trackers), and~\ref{chap:release} (release process) belong to the first part about the maintenance and evolution of the Coq system itself.
+Chapters~\ref{chap:distribution} (package distribution) and~\ref{chap:maintenance} (package maintenance) form a second part about the organization of the Coq package ecosystem.
+Chapters generally comprise a historical overview more specifically focused on Coq, toward the beginning of the chapters in the first part, and toward the end in the second part.

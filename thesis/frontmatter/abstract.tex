@@ -1,0 +1,74 @@
+\begin{minipage}[t][0.5\textheight][t]{\textwidth}
+    
+\section*{Abstract}
+\begin{SingleSpace}
+
+In this thesis, I present the application of software engineering methods and knowledge to the development, maintenance, and evolution of Coq ---an interactive proof assistant based on type theory--- and its package ecosystem.
+Coq has been developed at Inria since 1984, but has only more recently seen a surge in its user base, which leads to greater concerns about its maintainability, and the involvement of external contributors in the evolution of both Coq and its ecosystem of plugins and libraries.
+
+Recent years have seen important changes in the development processes of Coq, of which I have been a witness and an actor (adoption of GitHub as a development platform, first for its pull request mechanism, then for its bug tracker, adoption of continuous integration, switch to shorter release cycles, increased involvement of external contributors in the open source development and maintenance process).
+The contributions of this thesis include a historical description of these changes, the refinement of existing processes, the design of new processes, the design and implementation of new tools to help the application of these processes, and the validation of these changes through rigorous empirical evaluation.
+
+Involving external contributors is also very useful at the level of the package ecosystem.
+This thesis additionally contains an analysis of package distribution methods, and a focus on the problem of the long-term maintenance of single-maintainer packages.
+\end{SingleSpace}
+
+\vspace{3mm}
+
+\textbf{Keywords:} empirical software engineering, proof assistant, Coq, open source, open collaboration, software maintenance and evolution, GitHub, package ecosystem.
+
+\end{minipage} \\
+    
+    
+\begin{minipage}[b][0.49\textheight][t]{\textwidth}
+%\vspace{10mm}
+
+\section*{R\'esum\'e}
+\begin{SingleSpace}
+
+Dans cette th\`ese, je pr\'esente l'application de m\'ethodes et de connaissances en g\'enie logiciel au d\'eveloppement, \`a la maintenance et \`a l'\'evolution de Coq ---un assistant de preuve interactif bas\'e sur la th\'eorie des types--- et de son \'ecosyst\`eme de paquets.
+Coq est d\'evelopp\'e chez Inria depuis 1984, mais sa base d'utilisateurs n'a cess\'e de s'agrandir, ce qui suscite d\'esormais une attention renforc\'ee quant \`a sa maintenabilit\'e et \`a la participation de contributeurs externes \`a son \'evolution et \`a celle de son \'ecosyst\`eme de plugins et de biblioth\`eques.
+
+D'importants changements ont eu lieu ces derni\`eres ann\'ees dans les processus de d\'eveloppement de Coq, dont j'ai \'et\'e à la fois un t\'emoin et un acteur (adoption de GitHub en tant que plate-forme de d\'eveloppement, tout d'abord pour son m\'ecanisme de \emph{pull request}, puis pour son syst\`eme de tickets, adoption de l'intégration continue, passage \`a des cycles de sortie de nouvelles versions plus courts, implication accrue de contributeurs externes dans les processus de d\'eveloppement et de maintenance \emph{open source}).
+Les contributions de cette th\`ese incluent une description historique de ces changements, le raffinement des processus existants et la conception de nouveaux processus, la conception et la mise en {\oe}uvre de nouveaux outils facilitant l'application de ces processus, et la validation de ces changements par le biais d'\'evaluations empiriques rigoureuses.
+
+L'implication de contributeurs externes est \'egalement tr\`es utile au niveau de l'\'ecosyst\`eme de paquets.
+Cette th\`ese contient en outre une analyse des m\'ethodes de distribution de paquets et du probl\`eme sp\'ecifique de la maintenance \`a long terme des paquets ayant un seul responsable.
+
+\vspace{3mm}
+
+\textbf{Mots-cl\'es :} g\'enie logiciel empirique, assistant de preuve, Coq, open source, collaboration ouverte, maintenance et \'evolution du logiciel, GitHub, \'ecosyst\`eme de paquets.
+
+\end{SingleSpace}
+\end{minipage}
+
+\clearpage
+
+\chapter*{Extended abstract}
+
+Research on programming languages and underlying logical foundations has led to the design of programming languages with incredibly powerful type systems that give much stronger guarantees to programmers.
+During the same time, research on software engineering has led to technical and methodological advances that have made programmers incredibly more productive.
+Unfortunately, there have been too few bridges between the two domains. Some of the most advanced programming languages have been developed in academic teams with little knowledge on software engineering, and even less regarding recent research progress.
+In this thesis, I present the application of software engineering methods and knowledge to the development, maintenance, and evolution of Coq ---an interactive proof assistant that may also be viewed as a programming language with a very strong type system (based on type theory)--- and its package ecosystem.
+Coq has been developed at Inria since 1984, but has only more recently seen a surge in its user base, which leads to much stronger concerns about its maintainability, and the involvement of external contributors in the evolution of both Coq as a proof language, and its ecosystem of plugins and libraries.
+
+Recent years have seen important changes in the development processes of Coq, of which I have been a witness and an actor.
+The contributions of this thesis include a historical description of these changes, the refinement of existing processes, and the design of new ones, the design and implementation of new tools to help the application of these processes, and the validation of these changes through empirical evaluation.
+
+The switch from a push-based to a pull-based development model was first motivated by the opening to new contributors, but has also affected the quality of integrated changes.
+I present a historical overview of the adoption of pull-based development, and the changes that we implemented following this switch, including the systematic testing of external reverse dependencies through continuous integration, the use of labels, pull request templates, and the involvement of external contributors in the pull request integration process.
+Other changes include a switch of bug tracker, and the adoption of shorter release cycles.
+Each of these changes had associated challenges, which I identified and contributed to addressing.
+For instance, switching bug trackers required migrating preexisting issues and preserving meta-data as much as possible, which I achieved by reusing and adapting an existing migration tool.
+Switching to shorter release cycles required inventing a process and implementing associated tooling to manage efficiently the backporting process and the preparation of release notes.
+The solutions that I describe would be easy to apply beyond the Coq project.
+
+To empirically validate some actions that were taken, I have used a technique for causality analysis, imported from econometrics, on mined software repository data.
+I show that the switch of bug trackers, from Bugzilla to GitHub, resulted in more activity by core developers, and more external participation in discussions on bug reports.
+Using the same technique, I show that the introduction of a pull request template resulted in a higher proportion of pull requests including documentation, tests, and a changelog entry.
+This technique is presented in much detail, and could easily be applied to many more studies based on mined software repository data, in the context of empirical software engineering, to obtain more compelling results that go beyond the identification of correlations.
+
+Finally, involving external contributors is also very useful at the level of the package ecosystem.
+This thesis contains an analysis of package distribution methods, and a focus on the problem of the long-term maintenance of single-maintainer packages.
+I identified an emerging model of community organizations addressing this problem, which I present both abstractly and with specific examples.
+I founded an organization based on this model in the context of the Coq package ecosystem, and it is already quite successful.

@@ -1,0 +1,497 @@
+\chapter{Impact of switching bug trackers}
+
+\label{chap:bug-tracker}
+
+\section{Introduction}
+
+Bug reporting is an essential part of software development.
+In the context of an open source project, the bug reporting and fixing process is generally done on a public bug tracking platform, and, in the absence of paid testers, it depends a lot on the goodwill of independent users. Therefore, it involves a strong social component.
+
+However, having an open bug tracking system is not enough to attract participants. In addition to the software having enough users, the process of opening an issue (be it bug report or feature request) must be easy and appealing. Therefore, creating a favorable bug tracking environment may lead to an increase in bug tracking activity (from both developers and independent users), which may result in an increase in software quality. First, the participation of more users is helpful to find a larger proportion of bugs~\cite{raymond1999cathedral,van2009shallow}. Second, assuming that developers are equipped to cope with the increased number of incoming reports~\cite{anvik2005coping, davidson2011coping}, even duplicate reports are not necessarily harmful~\cite{Bettenburg2008}. Third, more activity on the bug tracker can also mean users are helping to reproduce bugs, produce traces, etc. and thus are working with the developers to get the bugs fixed~\cite{breu2010information}. More generally, opening issues and discussing existing ones has been shown to be an important step on the path to becoming an active contributor of an open source project~\cite{jensen2007role, nakakoji2002evolution, ye2003toward}.
+
+Despite the importance of the bug tracking environment that I have just highlighted, the impact of a change in this environment has rarely been studied, whether it is the bug tracking platform in full, a feature, or a policy~\cite{aboukhalil2019bug}.
+Furthermore, since the choice of bug tracker is not independent of the characteristics of the project, a comparison across projects using different bug trackers would not be sufficient to draw causal conclusions.
+
+In this chapter, I present and study the case of the switch of Coq's bug tracker, starting with the context of the switch and the technical challenges associated to it, and followed by an empirical evaluation of its impact.
+
+My contributions are practical, empirical, and methodological.
+First, I have improved an existing bug tracker migration tool to handle thousands of issues while preserving meta-data, and managed the switch of Coq's bug tracker from Bugzilla to GitHub, including the migration of preexisting issues.
+Second, with Annal\'i Casanueva Art\'is, we have analyzed the causal impact of this switch on the bug tracking activity through mining repository data, and interpreted the results through qualitative assessment based on interviews with developers.
+Our results show that the switch incurred an increase in bug tracking activity of core developers, and an increased number of community participants taking part to discussions.
+Third, we demonstrate in much detail the application of the RDD methodology presented in Section~\ref{sec:rdd}.
+
+This chapter is based on a paper that was accepted at the 2019 International Conference on Software Maintenance and Engineering~\cite{zimmermann:hal-01951176}.
+
+\section{Related work}
+
+While there is a very large literature on many aspects of bug reporting (see Strate and Laplante~\cite{strate2013literature}, and Zhang \emph{et al.}~\cite{zhang2016literature} for literature reviews), there is a lack of literature measuring the influence of the bug reporting environment on the bug reporting activity, or on any other aspect of software development.
+To my knowledge, there is no previous work measuring the impact of a change in bug reporting environment.
+More generally, there is little literature that compares bug trackers.
+
+\subsection{Comparing and proposing features of bug trackers}
+
+A simple, but quite limited way to compare bug trackers is to look at the features that each of them proposes.
+Karre \emph{et al}.~\cite{karre2017does} compared 31 bug trackers feature-wise, and gathered these tools in four clusters.
+Bugzilla belongs to the cluster of bug trackers with many features (together with RedMine and Mantis), while GitHub belongs to a cluster of bug trackers attached to source code management systems (together with Savannah and BitBucket).
+Abaee and Guru~\cite{abaee2010enhancement} listed the features of four commercial bug trackers, and proposed their own bug tracker with some new features, but with no evaluation.
+
+Many papers propose new features to add to bug trackers, but they rarely evaluate the impact of adding such features, even when a prototype was presented.
+Baysal \emph{et al.}~\cite{baysal2013situational} identified the need for personalized issue tracking systems after interviewing twenty Mozilla developers.
+They proposed a Bugzilla extension to address this need, and gave a, mostly qualitative, assessment by interviewing developers using their tool~\cite{baysal2014no}.
+Bortis~\cite{bortis2016porchlight} developed a bug triaging tool and evaluated how users interacted with it. However, there was no evaluation of its impact in the context of an actual software project.
+Just \emph{et al.}~\cite{just2008towards} surveyed developers from three large open source projects (Apache, Eclipse, and Mozilla --all three projects use Bugzilla) to identify missing features and provided recommendation to design better bug tracking systems.
+
+Our evaluation goes beyond a descriptive or normative perspective and quantitatively measures the causal impact of the change of the bug tracking platform (a crucial part of the bug tracking environment) on various aspects of bug tracking activity, and gives qualitative insights for its interpretation.
+
+\subsection{Analysis of projects' bug tracking data}
+
+Another way of comparing bug tracking systems could have been to conduct large-scale studies of many software projects using various bug trackers, and derive some differences associated with the use of the various systems. However, there are no such comparative studies in the literature.
+
+Sowe \emph{et al.}~\cite{sowe2013multi} noted that most preceding literature had only been comparing few projects at a time, usually using a single bug tracking system.
+In their study, they addressed this in part by studying hundreds of projects, but they did not mention which bug trackers the projects they compared used.
+
+Bissyand\'e \emph{et al.}~\cite{bissyande2013got} published the same year a larger scale investigation using ten thousand projects' bug tracking data, analyzing such things as the correlation between a project's success and its bug tracking activity.
+All the projects studied were using the same bug tracker (GitHub's).
+
+Francalanci and Merlo~\cite{francalanci2008empirical} analyzed the bug fixing process by studying closed bugs from nine open source projects (four using JIRA, four using SourceForge's bug tracker, and one using another bug tracker). They did not, however, try to correlate the bug tracking activity with the bug tracking system.
+
+\subsection{Switching support channels}
+
+Squire~\cite{squire2015should} measured the impact of switching developer support channels from mailing lists and self-hosted forums to Stack Overflow, and compared it with the expectations of projects having decided on such a move,
+whereas Vasilescu \emph{et al.}~\cite{vasilescu2014social} compared the behavior of the same users during the same period on the R mailing list and on Stack Overflow.
+
+An advantage with support channels is that they can be diversified, and it is possible to experiment with a new platform without abandoning the previous one (for instance, Coq's support channels currently include a users' mailing list, Stack Overflow, and a Discourse forum).
+On the contrary, bug tracking data is preferably located in a single, central location, and thus a decision to switch platforms is not easily reverted (especially when bug tracking data is migrated).
+Therefore, it is all the more important to provide empirical evidence of the consequences.
+
+\section{Switching Coq's bug tracker}
+
+\subsection{Context}
+
+\label{sec:context}
+
+From 2007 to 2017, the Coq bug tracker platform was a self-hosted Bugzilla~\cite{barnson2001bugzilla} instance (before this, from 2001 to 2007 it was using JitterBug~\cite{tridgell_jitterbug}, a now discontinued bug tracking system, and before 2001 a simple mailing list).
+In 2017, in a context where all code changes were conducted through GitHub pull requests (cf. Chapter~\ref{chap:pull-based-development}), the question of switching to GitHub's integrated bug tracker arose.
+After I conducted some preliminary testing that showed that migrating all preexisting issues was feasible, the Coq development team approved the switch to GitHub issues on October 4\textsuperscript{th}, 2017.
+
+According to the developers we interviewed, the motivations for switching were:
+\begin{itemize}
+	\item Consolidating the development tools on a single, integrated, platform: browsing between code, pull requests and issues is easier without having to switch websites. Furthermore, it means a common notification, mention, and assignment system.
+	\item GitHub's support for formatting and editing comments, cross-referencing and auto-closing issues, and more generally a more pleasant tool to use. Many developers perceived Bugzilla as unpleasant, old-fashioned, and very slow. It was a complex tool with many underused advanced features.
+	\item No need to administrate (maintain and update) the bug tracker. Almost half of the developers complained about the previous bug tracker failing often.
+	\item Easier to get started for newcomers (especially as many may already know GitHub and have a GitHub account).
+\end{itemize}
+
+Again, according to the developers we interviewed, the principal risks associated with the switch of bug tracker were:
+\begin{itemize}
+	\item Losing control of a critical tool to a private company and its future decisions. In particular, GitHub is not an open source platform (so cannot be cloned elsewhere) and backing up data from GitHub becomes even more important, but not trivial to do.
+	\item Losing or corrupting bug tracking data during the transition from Bugzilla to GitHub.
+	During the migration, some meta-data had to be converted to text, and external links and documentation about the bug tracker could have become stale or inaccurate.
+	\item A few developers additionally mentioned risks of losing useful features from Bugzilla, or discouraging some developers for whom it would be hard to adapt to the new tool.
+\end{itemize}
+
+\subsection{Migration}
+
+\label{sec:migration}
+
+As explained in Section \ref{sec:context}, one of the main risks (and deterrents) related to a switch of bug tracker was the possible loss or corruption of bug tracking and associated data. In particular, the Coq development team wanted preexisting issues to be migrated to the new bug tracker, while keeping the issue numbers as much as possible: indeed, these numbers are important because they are mentioned in many places (changelog, test-suite, other issues and pull requests, commits, external discussion platforms, etc.).
+
+I reused and adapted a tool~\cite{bugzilla2github} which is designed to import Bugzilla issues (extracted as an XML dump) to GitHub using its REST API~\cite{github_REST_API}. The issues are imported in an order designed to preserve numbers whenever possible. Issues whose number is unavailable (e.g. because the number is already taken by a GitHub pull request) are postponed and renumbered.
+
+I implemented several changes to make the tool better fit the needs of the Coq project (the main improvements having now been integrated upstream\footnote{
+	Thanks to the initial help of Martin Michlmayr.
+	See \url{https://github.com/berestovskyy/bugzilla2github/pull/3} and \url{https://github.com/berestovskyy/bugzilla2github/pull/4}.
+}):
+
+\paragraph{Allowing non-consecutive numbers}
+
+The imported set of issues had some holes in the numbering because some issues had been deleted.
+In particular, the previous migration from JitterBug to Bugzilla had not preserved issues that were already closed at the time, so the beginning of the set had many such holes.
+I added support for non-consecutive issue numbers by using postponed issues to fill the holes (in practice, there were sufficiently many postponed issues to fill all the holes).
+The current version of the tool can create dummy issues when the set of postponed issues is empty.
+
+\paragraph{Saving a correspondence table for renumbered issues}
+
+This was suggested when I requested a review of the adapted migration script from other developers,\footnote{
+	See \url{https://github.com/coq/coq/pull/1148}.
+}
+and turned out to be particularly useful, as this was used later on to redirect the old Bugzilla URLs to the new GitHub ones, and to rename some test files corresponding to renumbered bugs.\footnote{
+	See: \url{https://github.com/coq/coq/issues/6001}.
+}
+
+\paragraph{Using GitHub's issue import API and overcoming GitHub's rate limits}
+
+Creating a new issue or a new comment through the normal GitHub REST API triggers notifications (for people who are watching the repository or are mentioned in the issue thread).
+Therefore, GitHub chooses to impose a strict rate limit on these actions, which prevented using this tool for importing more than a few hundred issues.
+Fortunately, GitHub provides a (beta) issue import API~\cite{github_issue_import_API} which, in addition to not triggering notifications, also allows importing one issue, its comments, and meta information such as closed status and assignee in a single request (thus reducing the duration to import 4900 issues to just a few hours).
+Furthermore, using this API allows to keep the dates of imported issues and comments, which was very useful during the empirical evaluation of the switch.
+
+Once the switch was approved by the development team on October 4\textsuperscript{th}, 2017, it had to happen as soon as possible because every new pull request before the migration added to the number of issues that would need to be renumbered.
+It was conducted on October 18\textsuperscript{th}, the day after the 8.7.0 release (and not before to avoid disturbing the release process).
+Only 502 out of 4900 issues (whose numbers were below 1154) had to be renumbered.
+This number is quite low because a lot of the most ancient issues had been deleted (during the previous bug tracker migration).
+Due to the rate of pull request creation, if the switch had been delayed by a single year, the number of renumbered bugs would have been closer to 3000.
+
+\section{Empirical validation}
+
+In this section, I present the empirical evaluation of the impact of the bug tracker switch that we have conducted with Annal\'i Casanueva Art\'is.
+We conducted a quantitative evaluation by applying the RDD methodology presented in Section~\ref{sec:rdd} to mined software repository data.
+We completed this analysis by a qualitative evaluation based on interviews with Coq developers, which allows us to interpret the quantitative results with more confidence, and gives additional insights on the impact of the bug tracker switch.
+
+\subsection{Research questions}
+
+Our research questions cover the spectrum of the possible impact such a switch could have had on the bug tracking activity:
+
+\paragraph{Impact on level of bug tracking activity (RQ1)}
+
+Did the switch to the GitHub bug tracker, given the various expected benefits that such a switch would bring, impact the level of activity on the bug tracker? If so, who are the participants whose level of activity was impacted, and how can we explain such changes?
+
+\paragraph{Impact on quality of bug tracking activity (RQ2)}
+
+Did the switch to GitHub impact the quality of opened issues, and did it impact the quality of interactions between developers, and between developers and non-developers?
+
+\paragraph{Impact on the audience of the bug tracker (RQ3)}
+
+Did the switch to GitHub help onboard more new reporters and commentators? Did it increase the number of distinct non-developers that regularly take part in the bug tracking activity?
+
+\subsection{Data}
+
+\subsubsection{Extraction}
+
+All the data for this study was extracted on March 31\textsuperscript{st}, 2019 using the GitHub GraphQL API~\cite{github_graphql_API}.
+Using this API allows us to do large requests (100 nodes in a single request) with just the information we need (thus both reducing the bandwidth usage and speeding up the extraction process).
+In the companion Jupyter notebook~\cite{zimmermann2019bugtracker}, we provide the code to request this data from GitHub, to load the CSV files, to run the pre-processing steps and the analyses, including the robustness checks presented in Section~\ref{sec:robustness-checks}.
+
+As was previously mentioned, the migration conserved the dates of issues and comments, which allows us to obtain them transparently for issues before and after the switch.
+On the other hand, author information for migrated issues and comments had to be encoded in the text, and is thus extracted from there.
+Finally, we do not consider any data from before 2008, because this data comes from a previous migration, and was not properly saved.
+
+\subsubsection{Pre-processing}
+
+\label{sec:pre-processing}
+
+\paragraph{Excluding specific reporters}
+
+We have one specific reporter who is alone responsible for almost a quarter of all issues. To avoid having the behavior of a single individual strongly impact the overall statistics, we exclude his comments, issues, and the comments they received from our analysis. Similarly, we also exclude my own activity from the dataset.
+
+\paragraph{Merging duplicate accounts}
+
+A significant number of Bugzilla accounts were duplicates, i.e. they belonged to users who had created several accounts. This typically happened when people used different e-mail addresses (generally belonging to their successive employers / institutions). These duplicate accounts were merged in three (manual) steps:
+
+\begin{itemize}
+	\item First, during the migration process, I created a correspondence table that mapped 217 (out of 686) Bugzilla accounts to 175 GitHub accounts. Priority was given to finding GitHub accounts for users who still had opened issues.
+	\item Second, when a Bugzilla user who had not been mapped to a GitHub account ended up being active on GitHub (for instance, because they created a GitHub account after the switch), then I edited migrated issues to use their GitHub username, as if they had been listed in the correspondence table.
+	\item Third, after extracting the data from GitHub, I further identified duplicate Bugzilla accounts (that had not been merged because they had not been mapped to GitHub accounts).
+\end{itemize}
+
+The size of the dataset allowed this merging step to be a manual process. Larger datasets would have made the use of identity merging heuristics necessary. Usually, the duplicate accounts were easy to identify because they provided the full name explicitly or the e-mail address contained it. In the few cases where there remained ambiguity, I searched for more information about the users on the internet (benefiting from the fact that a lot of them were from academia and used their institution e-mail addresses).
+
+We did not merge any GitHub accounts. It is indeed much less likely that someone forgets about their existing GitHub account and creates a new one.
+In practice, I am aware of a single reporter having used several GitHub accounts (a personal and a professional one), but this dates from after our data collection.
+
+Even if it is possible that a few more duplicate accounts have been missed, we strongly believe that it would not change anything to our results:
+
+\begin{itemize}
+	\item It could have had an effect on our new reporter or commentator analysis, but we do not have any statistically significant results for these.
+	\item It is very unlikely that it could affect our analysis of distinct weekly reporters or commentators, because that would mean that someone used some duplicate accounts (that were missed during the merging phase) during the same week.
+\end{itemize}
+
+\paragraph{Removal of migration artifact comments}
+
+The migration tool created artifact comments, which are easily identified because they are the comments that were posted at the exact same date and time as the corresponding issue. We exclude them from our analysis.
+
+\subsubsection{Variable definition}
+
+\label{sec:variables}
+
+We measure different indicators of bug tracker activity: the numbers of issues per day; the number of distinct reporters in a week; the number of new reporters (who had never opened an issue before) per day; the number of comments per day; the number of distinct commentators in a week; and the number of new commentators per day. The number of distinct reporters and commentators is intended to allow us to distinguish between having a few prolific contributors and a large base of casual contributors. We use an interval of a week instead of a day for measuring the number of distinct issue authors and commentators because, at the scale of a day, there is less opportunity for repeated contributions by the same contributor, but longer scales would compromise the estimation of effects by removing too much data.
+
+In the figures of Section~\ref{sec:descriptive-stats}, each point represents an average on a four-week period. This is to reduce variability and allow an easier visual analysis. In the figures of Section~\ref{sec:causal-analysis}, each point represents an average on a two-week period.
+
+We analyze heterogeneous effects by distinguishing between developers and non-developers. We define ``developers'' as the persons who have contributed more than 100 commits since 2008. We identified 18 developers. These developers are responsible for 91.5\% of all commits since 2008 (this is consistent with standard results on the proportion of commits by the ``core team'' in open source software~\cite{robles2009evolution}). Out of the 18 developers, 11 were active in the two months preceding the bug tracker switch (committed at least once). Once we exclude the two reporters mentioned in Section~\ref{sec:pre-processing}, there remain 9 developers that were active at the time of the migration and that were included in our analysis. We later interviewed all of them.
+This seemingly arbitrary criterion happens to correctly recover what Coq developers viewed as the ``core team'' during the period around the bug tracker switch.
+
+\subsection{Descriptive statistics}
+
+\label{sec:descriptive-stats}
+
+Figures~\ref{bug_nb_with_releases}, \ref{comments_with_releases}, \ref{reporters_with_releases}, and \ref{commentators_with_releases} show the evolution of our four main outcomes from January 2016 to March 2019.
+We choose to present the data starting in 2016 because, in January 2016, Coq 8.5 was released, and this marks the adoption of a more rapid release cycle (see Section~\ref{sec:frequent-releases}).
+This change in the development process could have impacted the activity on the bug tracker and made it not comparable.
+
+In Figure~\ref{bug_nb_with_releases} and \ref{comments_with_releases}, each point represents the 4-week average of the number of issues and number of comments per day respectively for both developers and non-developers.
+In Figure~\ref{reporters_with_releases} and \ref{commentators_with_releases}, each point represents the 4-week average of the number of distinct reporters and distinct commentators per week.
+In all four figures, the vertical red line shows the date of the bug tracker switch; the vertical black lines represent the date of major releases and the discontinuous horizontal lines represent the mean before and after the switch respectively. 
+
+\begin{figure}
+	\begin{center}
+		\includegraphics{../notebooks/bug-tracker/bug_nb_with_releases.png}
+		\caption{Number of issues per day (averaged by 4-week periods) with release dates (since 2016).} \label{bug_nb_with_releases}
+	\end{center}
+\end{figure}
+
+\begin{figure}
+	\begin{center}
+		\includegraphics{../notebooks/bug-tracker/comments_with_releases.png}
+		\caption{Number of comments per day (averaged by 4-week periods) with release dates (since 2016).} \label{comments_with_releases}
+	\end{center}
+\end{figure}
+
+\begin{figure}
+	\begin{center}
+		\includegraphics{../notebooks/bug-tracker/reporters_with_releases.png}
+		\caption{Number of weekly distinct reporters (averaged by 4-week periods) with release dates (since 2016).} \label{reporters_with_releases}
+	\end{center}
+\end{figure}
+
+\begin{figure}
+	\begin{center}
+		\includegraphics{../notebooks/bug-tracker/commentators_with_releases.png}
+		\caption{Number of weekly distinct commentators (averaged by 4-week periods) with release dates (since 2016).} \label{commentators_with_releases}
+	\end{center}
+\end{figure}
+
+Considering the whole period (2016--2019), less issues are reported by developers than by non-developers.
+In a four-day period, on average, two issues are opened by developers and five by non-developers.
+On the other hand, developers post more comments than non-developers.
+On an average day, developers post around five comments and non-developers two.
+This is not surprising because some bugs found by developers are resolved directly without opening an issue, and because issue reports are generally answered by developers.
+There are more distinct non-developers than developers who open issues in an average week (around six distinct non-developers and two distinct developers).
+On average on the whole period, there are slightly more distinct non-developers (per week) that comment than developers.
+Interestingly, this is a case where the switch of bug tracker marks a change in the ranking: before the switch there were more distinct developers that commented each week, and afterwards, there were more distinct non-developers.
+
+For all outcomes, the mean before the switch is statistically significantly lower than the mean after the switch both for developers and non-developers (mean difference T-tests, $p < 0.001$).
+For some outcomes, the difference in activity patterns before and after the switch is clear to the naked eye.
+In Figure~\ref{bug_nb_with_releases}, we see an increase in the number of issues reported by developers.
+In Figure~\ref{comments_with_releases}, we see an increase in the number of comments by developers with many data points after the switch that are well above the highest point before the switch.
+Finally, in Figure~\ref{commentators_with_releases}, we see a clear increase in the number of distinct non-developer commentators with almost all points after the switch above almost all points before the switch.
+Some other differences may be appreciated but are less clear to the naked eye than those presented.
+
+\subsection{Causal analysis of the impact of the switch}
+
+\label{sec:causal-analysis}
+
+We exploit the fact that the switch from Bugzilla to GitHub can be seen as a clear cutoff in time to use the RDD methodology presented in Section~\ref{sec:rdd} to estimate the effects of the switch on our outcome variables, to determine if the estimated effects are statistically significant, and to interpret them causally.
+
+Our main specification takes a conservative approach with a relatively small bandwidth of 175 days before and after the switch to minimize possible bias, and a simple linear model to avoid overfitting. However, as a robustness check, we also estimate a quadratic model on a larger time frame (511 days on each side, cf. Section~\ref{sec:robustness-checks}).
+
+We estimate our RDDs for two different sub-samples: the developers and the non-developers.
+
+\subsubsection{Impact on the number of issues}
+
+\begin{table}
+	\begin{center}
+		\input{../notebooks/bug-tracker/bug_nb_rd.tex}
+		\caption{
+			Estimated impact on the number of issues.
+			Statistically significant results are in boldface (\textbf{*} means $p<0.05$, \textbf{**} means $p<0.01$, \textbf{***} means $p<0.001$).
+			Standard error is in parentheses.
+		}
+		\label{tab:bug_nb}
+	\end{center}
+\end{table}
+
+\begin{figure}
+	\begin{center}
+		\includegraphics{../notebooks/bug-tracker/bug_nb_rd.png}
+		\caption{
+			Number of issues per day before and after the switch (with fitting lines and confidence intervals from the regression results, and points corresponding to average values over two-week periods).
+		}
+		\label{bug_nb_rd}
+	\end{center}
+\end{figure}
+
+Table~\ref{tab:bug_nb} presents the estimated impact of the switch on the number of issues.
+Each column shows the estimates for a different sub-sample (all reporters, developers and non-developers).
+Estimates that are not statistically significant cannot be interpreted as an absence of effect but indicate that if such effect exists, we are unable to discern it with our conservative approach.
+Figure~\ref{bug_nb_rd}  shows the number of issues before and after the switch and the fitting lines and confidence intervals corresponding to the regression results. 
+
+For developers, we see a statistically significant positive jump in the rate of issue creation just after the switch.
+The switch is estimated to have increased the daily number of issues by 0.7 (representing an increase of around 270\%).
+That is, on average, we observe around one issue opened by developers every day after the switch,
+while, before the switch, developers opened an issue every four days.
+There is no statistically significant effect on the number of issues by non-developers.
+
+\subsubsection{Impact on the number of comments}
+
+Table~\ref{tab:comment_nb} and Figure~\ref{comment_nb_rd} show the estimated impact of the bug tracker switch on the number of comments.
+We see a statistically significant positive jump.
+The number of comments just after the switch more than doubles (from around 5 comments per day before the switch to around 10 after).
+This appears to be due, for the most part, to comments by developers who increased their total average number of comments per day from around 3 to around 8.
+
+\begin{table}
+	\begin{center}
+		\input{../notebooks/bug-tracker/comment_nb_rd.tex}
+		\caption{
+			Estimated impact on the number of comments.
+			Statistically significant results are in boldface (\textbf{*} means $p<0.05$, \textbf{**} means $p<0.01$, \textbf{***} means $p<0.001$).
+			Standard error is in parentheses.
+		}
+		\label{tab:comment_nb}
+	\end{center}
+\end{table}
+
+\begin{figure}
+	\begin{center}
+		\includegraphics{../notebooks/bug-tracker/comment_nb_rd.png}
+		\caption{
+			Number of comments per day before and after the switch (with fitting lines and confidence intervals from the regression results, and points corresponding to average values over two-week periods).
+		}
+		\label{comment_nb_rd}
+	\end{center}
+\end{figure}
+
+\subsubsection{Impact on the number of distinct reporters}
+
+Table~\ref{tab:reporters} and Figure~\ref{reporter_nb_rd} show the estimated impact of the switch on the number of distinct issue reporters each week.
+These results show that the switch had also a positive effect on the number of distinct developer-reporters in a given week.
+The number of distinct developers that opened an issue in a given week increased, on average, by around 130\% (from 1.5 developer-reporters each week before the switch to 3.42 after).
+
+\begin{table}
+	\begin{center}
+		\input{../notebooks/bug-tracker/reporter_nb_rd.tex}
+		\caption{
+			Estimated impact on the number of weekly distinct reporters.
+			Statistically significant results are in boldface (\textbf{*} means $p<0.05$, \textbf{**} means $p<0.01$, \textbf{***} means $p<0.001$).
+			Standard error is in parentheses.
+		}
+		\label{tab:reporters}
+	\end{center}
+\end{table}
+
+\begin{figure}
+	\begin{center}
+		\includegraphics{../notebooks/bug-tracker/reporter_nb_rd.png}
+		\caption{Number of weekly distinct reporters before and after the switch (with fitting lines and confidence intervals from the regression results, and points corresponding to average values over two-week periods).} \label{reporter_nb_rd}
+	\end{center}
+\end{figure}
+
+\subsubsection{Impact on the number of distinct commentators}
+
+Table~\ref{tab:commentators} and Figure~\ref{commentator_nb_rd} show the estimated impact of the switch on the number of distinct commentators each week.
+We observe a statistically significant jump in the number of both developer and non-developer commentators. 
+
+In general terms, the number of distinct commentators in a given week changed from an average of 7 to an average of 13 (almost doubling the commentators).
+This increase is due in larger part to the number of non-developers commentators, which more than doubles (from around 3 to around 7 on an average week), while, among developers, the number of commentators  increases by 66\% (from around 4 to around 6).
+
+\begin{table}
+	\begin{center}
+		\input{../notebooks/bug-tracker/commentator_nb_rd.tex}
+		\caption{
+			Estimated impact on the number of weekly distinct commentators.
+			Statistically significant results are in boldface (\textbf{*} means $p<0.05$, \textbf{**} means $p<0.01$, \textbf{***} means $p<0.001$).
+			Standard error is in parentheses.
+		}
+		\label{tab:commentators}
+	\end{center}
+\end{table}
+
+
+\begin{figure}
+	\begin{center}
+		\includegraphics{../notebooks/bug-tracker/commentator_nb_rd.png}
+		\caption{Number of weekly distinct commentators before and after the switch (with fitting lines and confidence intervals from the regression results, and points corresponding to average values over two-week periods).} \label{commentator_nb_rd}
+	\end{center}
+\end{figure}
+
+\subsubsection{Impact on the number of new reporters and commentators}
+
+The companion Jupyter notebook~\cite{zimmermann2019bugtracker} additionally includes an analysis on new reporters and new commentators.
+The estimated coefficients also show a positive jump, but they are not statistically significant.
+
+\subsection{Interviews of developers, discussion of the research questions}
+
+In order to obtain qualitative insights into the effects of the switch that will help us interpret the results of the causal analysis, we conducted semi-structured interviews of all developers of Coq that were active at the time of the switch (as defined in Section \ref{sec:variables}) and that we included in our quantitative analysis.
+A total of 9 interviews were conducted between March 19\textsuperscript{th} and April 4\textsuperscript{th}, 2019.
+Both Annal\'i Casanueva Art\'is and myself were present during the interviews and all the interviews were recorded.
+The answers were coded by both interviewers in an attempt to minimize errors.
+The interview outline with questions asked to all developers, and the encoding of the answers can be found in the supplementary material of the ICSME paper~\cite{zimmermann2019supplementary}.
+
+\subsubsection{RQ1: Impact on level of bug tracking activity}
+
+In Section~\ref{sec:descriptive-stats}, we observed an increase in the mean number of issues and comments after the switch, both for developers and non-developers.
+However, as shown in Section~\ref{sec:causal-analysis}, we are able to find a causal effect of the switch on these two variables only for developers.
+In particular, the estimated impact of the switch was to more than quadruple the number of opened issues, and to more than double the number of comments, by developers.
+This significant increase in the bug tracking activity is all the more remarkable given that two (out of nine) developers highlighted that it was hard to adapt to the new bug tracker, and thus they reduced their activity after the switch.
+
+We not only observed an increase in activity by developers but also an increase in the number of distinct developer reporters and commentators. This shows that developers are active more often.
+
+When we asked developers how they would interpret this effect on the level of activity of developers, they almost all (7 out of 9) mentioned the more comfortable experience of using GitHub's integrated bug tracking system, reminding many of the motivations they had previously listed for switching (better interface, less slow, same location for issues and pull requests, etc.). Many developers told us that they personally did not always open issues on the Bugzilla bug tracker when they found small bugs, and they now did open issues more often because it was easier to do so. One developer in particular admitted he had not been very active on the Bugzilla bug tracker since the main development activity had moved to GitHub's pull requests.
+
+In addition, the GitHub notification system (including the mention system which allows attracting a developer's attention on a specific issue) was identified as being responsible for part of the additional activity. When a user is subscribed to a repository (which is the case of most Coq developers), notifications (by e-mail or in the web interface) are sent whenever a new issue is opened or a comment is posted. This can attract the attention of developers more quickly and lead to more comments in response. It was mentioned how some developers had trouble adjusting their settings to make it easier to manage this large flow of information (GitHub's notification default settings are quite unsuited to repositories with large levels of activity).
+
+\subsubsection{RQ2: Impact on quality of bug tracking activity}
+
+Measuring quality of bug tracking activity is difficult.
+That is why we could only answer this second research question qualitatively, by asking developers if they perceived a change in quality of issue reports and interactions on the bug tracker.
+A majority (5 out of 9) claimed that GitHub helped at least some reporters produce better issue reports (thanks in particular to formatting and the issue template\footnote{
+	GitHub allows setting up a template to help users opening issues know what information they should provide~\cite{github_issue_template} (similar to the pull request template that I presented in Section~\ref{sec:template}).
+	The issue template was added the day of the switch: \url{https://github.com/coq/coq/pull/1149}.
+}).
+However, three developers added that the switch had also attracted less experienced users whose reports were sometimes of a lower quality.
+
+Regarding the quality of interactions on the bug tracker, again a majority of developers (6 out of 9) claimed that it improved after the switch. In particular, it was mentioned that users are more reactive and answer more frequently when they are asked additional information.
+
+Several developers also emphasized that it was easier to discuss on the new platform, especially with respect to bugs that cross project boundaries. Indeed, GitHub makes it easy to link between issues, not only in the same repository, but also across the repositories of multiple projects. Examples of related projects include projects that Coq depends on (the OCaml compiler~\cite{leroy:hal-00930213}, the Dune build system~\cite{dimino2016dune}, the Sphinx documentation tool~\cite{sphinx}, etc.) and projects that depend on Coq (in particular the Coq plugins and libraries that are tested in CI, cf. Section~\ref{sec:compatibility-testing}, but also editor support packages like the Proof-General~\cite{aspinall2000proof} and Company-Coq~\cite{pitclaudel2016company} major and minor Emacs modes, etc.).
+Ma \emph{et al.}~\cite{ma2017developers} have specifically studied the process of fixing bugs that cross project boundaries, in the context of the scientific Python ecosystem.
+
+Other perceived quality improvements include an easier navigation among issues, which helps both developers do a more efficient triaging, and users discover existing issues more easily, on which they can subsequently leave comments adding information. This participation of users is useful to improve the overall quality of some preexisting reports.
+
+\subsubsection{RQ3: Impact on the audience of the bug tracker}
+
+In Section~\ref{sec:descriptive-stats}, the clearest change after the bug tracker switch was the increase in the number of distinct weekly non-developer commentators.
+This observation was further confirmed in Section~\ref{sec:causal-analysis}: the estimated impact of the switch was to more than double the number of distinct non-developer commentators in an average week.
+
+When asked to interpret
+this surge,
+all the developers said that GitHub was more accessible, either because it is a very popular platform on which many people already have an account (especially computer science students who represent a large proportion of Coq users), or because it is quite simple to use, especially in comparison with Bugzilla. These explanations apply to a general increased participation of non-developers, but do not explain specifically an increase in the number of distinct commentators (as opposed to reporters).
+
+Some factors that were mentioned by a few developers and could have specifically influenced the number of commentators are that some external contributors who already contributed through pull requests now also comment issues more systematically, that more attention is given to newcomers, that there is generally more discussion between developers and non-developers on the bug tracker, and that it is easier for interested users to subscribe to just part of the bug tracking activity (and thus participate in the discussion without following the activity on the whole bug tracker).
+
+\subsubsection{General discussion}
+
+Beyond the scope of our research questions, we gathered other perceived effects of the bug tracker switch that affect the quality of software development in a broader way.
+Most of the developers we interviewed noted that the bug tracker switch to GitHub contributed to a more general culture switch towards a more recorded communication and transparent development.
+In particular, it was mentioned that GitHub makes written communication less costly, that the mention system can be used in place of personal e-mails, which avoids losing technical content in private threads, and that more types of discussion take place in the bug tracker (included related to long-term plans or development processes).
+
+In addition, some developers found that GitHub provides a more global view of the state and history of development. They also perceived an increased visibility of developers' own work, and of the Coq project overall.  
+
+While our RDD methodology can only be used to measure the immediate causal impact, an important question concerns the long-term effect of the switch.
+Our descriptive statistics (Section~\ref{sec:descriptive-stats}) and robustness checks on longer time horizons (Section~\ref{sec:robustness-checks}) seem to validate that the observed effect of the switch was durable.
+This can be explained in part because GitHub evolves faster, according to the needs of ever-evolving open source developing processes.
+During our interviews, we learned that some of the recently added features of GitHub, like the automatic search for related issues~\cite{github_related_issues}, are particularly appreciated.
+
+\subsection{Robustness checks and threats to validity}
+
+\subsubsection{Internal validity and robustness checks}
+
+\label{sec:robustness-checks}
+
+The most important threat when performing RDDs, especially on time-series, is to have another event that occurred near the cutoff, and which could have influenced the outcomes. In our case, there were no such events that we could identify, except the 8.7.0 release, that took place on October 17\textsuperscript{th}, just one day before the switch.
+To confirm that it is not the release that is driving our results, we perform some placebo robustness checks, i.e. we do the exact same analysis that we do for the bug tracker switch, replacing the cutoff date by the date of six other releases (all the other major releases since 2009, except the latest one because we do not have yet enough data points after the release). We show that the only positive and significant effect in the bug tracker activity after any proposed cutoff is the effect after the switch. For some outcomes, we observe a significant effect after some major releases but this effect is negative and of a much lower absolute magnitude. It is thus very unlikely that our results are driven by the release close to the switch and not by the switch itself.  
+
+Our main specification for RDD uses a small bandwidth and a linear model.
+As a robustness check, we estimate our model using larger time horizons (511 days, i.e. 73 weeks, on each side of the cutoff, corresponding to all the data that we collected after the switch and the same number of days before).
+To reduce the associated bias, we include a quadratic term to allow the regression to better fit the data and ``adjust'' to far away data points.
+Virtually all our results still hold with this specification, with comparable estimated magnitude, and with statistical significance (with only the number of distinct developer-reporters going just above the arbitrary $0.05$ p-value threshold).
+
+Temporal RDDs have some notable differences from other types of RDDs, as noted in a recent paper by Hausman and Rapson \cite{hausman2018regression}. One major difference is the capacity of anticipation and adaptation to the treatment, that affects directly the outcome. To ensure that our results are robust to these effects, we additionally estimate donut RDDs (i.e. we exclude the data points just after and just before the switch, which are potentially problematic), as recommended in \cite{hausman2018regression}. Our results still hold with comparable estimated magnitudes, and a few of them going just above the arbitrary $0.05$ p-value threshold (this is not unexpected, given that we have removed data points, and this automatically increases the standard errors).
+Time-series are also subject to potential serial auto-correlation of errors (errors at time $t+1$ are not independent from errors at time $t$). Failing to take such auto-correlation into account can lead to underestimate standard errors. To check that there is no serial auto-correlation in our data, we plot residuals\footnote{Residuals are the differences between measured and estimated values.}~\cite{wagner2002segmented}, and notice the absence of any specific pattern beyond those which show the presence of heteroscedasticity, which we already control for (see the corresponding Jupyter notebook~\cite{zimmermann2019bugtracker}).
+
+\subsubsection{External validity}
+
+This is only a case study on a very specific project with a relatively small core team, and therefore it is very important that this study be replicated before we can draw general conclusions that can serve to formulate recommendations for open source developers. Our reusable assets, such as the migration tool and the analysis pipeline should be helpful to perform such replications.
+
+\section{Conclusion and perspectives}
+
+I have conducted the switch of the Coq bug tracker from Bugzilla to GitHub, including the migration of preexisting issues, and I have improved existing tooling in the process.
+Other open source projects have already benefited from this enhanced tooling (Ledger, migrating from Bugzilla to GitHub in 2018), or the experience that I drew from it and shared in a blog post (OCaml, migrating from Mantis to GitHub in 2019).
+
+By analyzing mined repository data, we have shown that this bug tracker switch resulted in an increase in bug tracking activity in two ways. First, main developers are using the bug tracker more, by opening more issues and communicating more. Second, external contributors are more numerous to take an active role by commenting issues as well.
+
+We complemented this quantitative analysis by interviewing the main developers. Almost all of them were very happy with the bug tracker switch. They provided us with insights to explain our estimated causal effects in bug tracking activity, and on the more general impact on the development process and its transparency.
+
+Finally, we presented in details an example of the use of RDD, an econometric method to derive causality, that is seldom used in empirical software engineering.
+
+Given the lack of literature on the effects of bug tracking environments, interested researchers could expand our analysis in many ways. Analyzing other outcomes (such as pull requests or the rapidity of bug resolution) could give interesting additional insights, and help create a more complete picture of the mechanisms at play.
+Replicating our analysis on more projects would increase the external validity of the results, and allow researchers to offer clear takeaways to projects interested in switching their bug trackers. Based on this first study, it seems that moving to a more popular, and integrated platform can help increase the level, the quality and the audience of bug tracking activity.
